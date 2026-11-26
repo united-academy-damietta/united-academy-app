@@ -480,10 +480,10 @@ app.get('/api/staff', asyncWrap((req, res) => {
   const today = todayCairo();
   const date = req.query.date || today;
   const rows = db.prepare('SELECT * FROM staff ORDER BY id').all();
-  const att = db.prepare('SELECT staff_id, status FROM staff_attendance WHERE date = ?').all(date);
+  const att = db.prepare('SELECT staff_id, status, late_minutes FROM staff_attendance WHERE date = ?').all(date);
   const byStaff = {};
-  att.forEach((r) => (byStaff[r.staff_id] = r.status));
-  res.json({ date, staff: rows.map((m) => Object.assign({}, m, { status: byStaff[m.id] || null })) });
+  att.forEach((r) => (byStaff[r.staff_id] = { status: r.status, late_minutes: r.late_minutes || 0 }));
+  res.json({ date, staff: rows.map((m) => Object.assign({}, m, byStaff[m.id] || { status: null, late_minutes: 0 })) });
 }));
 app.post('/api/staff', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
@@ -508,18 +508,42 @@ app.delete('/api/staff/:id', asyncWrap((req, res) => {
   res.json({ ok: true });
 }));
 app.post('/api/staff-attendance', asyncWrap((req, res) => {
-  const { staff_id, date, status } = req.body || {};
+  if (!requireFull(req, res)) return; // الإدارة بس اللي تسجل وتعدّل حضور الجهاز
+  const { staff_id, date, status, late_minutes } = req.body || {};
   if (!staff_id || !date) return res.status(400).json({ error: 'staff_id و date مطلوبين' });
   if (status === null) {
     db.prepare('DELETE FROM staff_attendance WHERE staff_id = ? AND date = ?').run(staff_id, date);
     return res.json({ ok: true, cleared: true });
   }
   if (!['present', 'absent', 'late'].includes(status)) return res.status(400).json({ error: 'الحالة: present أو absent أو late' });
+  let mins = 0;
+  if (status === 'late') {
+    mins = parseInt(late_minutes, 10);
+    if (!Number.isFinite(mins) || mins < 0) mins = 0;
+    if (mins > 600) mins = 600;
+  }
   db.prepare(
-    `INSERT INTO staff_attendance (staff_id, date, status) VALUES (?,?,?)
-     ON CONFLICT(staff_id, date) DO UPDATE SET status = excluded.status`
-  ).run(staff_id, date, status);
+    `INSERT INTO staff_attendance (staff_id, date, status, late_minutes) VALUES (?,?,?,?)
+     ON CONFLICT(staff_id, date) DO UPDATE SET status = excluded.status, late_minutes = excluded.late_minutes`
+  ).run(staff_id, date, status, mins);
   res.json({ ok: true });
+}));
+
+// Coach's own attendance (view only): linked staff record, this month.
+app.get('/api/my-attendance', asyncWrap((req, res) => {
+  const me = db.prepare('SELECT id, name, role, squad FROM staff WHERE user_id = ?').get(req.user.id);
+  if (!me) return res.json({ linked: false });
+  const today = todayCairo();
+  const monthStart = today.slice(0, 8) + '01';
+  const rows = db.prepare(
+    `SELECT date, status, late_minutes FROM staff_attendance WHERE staff_id = ? AND date >= ? ORDER BY date DESC`
+  ).all(me.id, monthStart);
+  const tot = { present: 0, absent: 0, late: 0, late_minutes: 0 };
+  rows.forEach((r) => {
+    tot[r.status] = (tot[r.status] || 0) + 1;
+    if (r.status === 'late') tot.late_minutes += r.late_minutes || 0;
+  });
+  res.json({ linked: true, name: me.name, month: today.slice(0, 7), totals: tot, rows });
 }));
 
 // ---------- coaches overview (full roles) ----------
@@ -536,7 +560,10 @@ app.get('/api/coaches-overview', asyncWrap((req, res) => {
     const staffAtt = db.prepare(
       `SELECT SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) AS present, SUM(CASE WHEN status='absent' THEN 1 ELSE 0 END) AS absent, SUM(CASE WHEN status='late' THEN 1 ELSE 0 END) AS late FROM staff_attendance WHERE staff_id = ? AND date >= ?`
     ).get(c.id, monthStart);
-    return { id: c.id, name: c.name, role: c.role, squad: c.squad, players_count: players, attendance_records_month: att, present_month: staffAtt.present || 0, absent_month: staffAtt.absent || 0, late_month: staffAtt.late || 0 };
+    const lateMins = db.prepare(
+      `SELECT COALESCE(SUM(late_minutes),0) AS t FROM staff_attendance WHERE staff_id = ? AND date >= ? AND status = 'late'`
+    ).get(c.id, monthStart).t;
+    return { id: c.id, name: c.name, role: c.role, squad: c.squad, players_count: players, attendance_records_month: att, present_month: staffAtt.present || 0, absent_month: staffAtt.absent || 0, late_month: staffAtt.late || 0, late_minutes_month: lateMins };
   }));
 }));
 

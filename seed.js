@@ -86,13 +86,33 @@ function seedIfEmpty() {
   const insertStaff = db.prepare('INSERT INTO staff (name, role, squad) VALUES (?,?,?)');
   const staffTx = db.transaction(() => {
     staffRows.forEach(([name, role, squad, username, urole]) => {
-      insertStaff.run(name, role, squad);
+      const info = insertStaff.run(name, role, squad);
       if (username && !db.prepare('SELECT id FROM users WHERE username = ?').get(username)) {
-        auth.createUser(username, 'united2026', urole, squad);
+        const uid = auth.createUser(username, 'united2026', urole, squad);
+        db.prepare('UPDATE staff SET user_id = ? WHERE id = ?').run(uid, info.lastInsertRowid);
       }
     });
   });
   staffTx();
+
+  // Demo staff attendance over the last training days (incl. a late with minutes).
+  const allStaff = db.prepare('SELECT id, role FROM staff').all();
+  const insStaffAtt = db.prepare(
+    'INSERT OR IGNORE INTO staff_attendance (staff_id, date, status, late_minutes) VALUES (?,?,?,?)'
+  );
+  const tdays = [];
+  for (let i = 1; tdays.length < 4 && i < 21; i++) {
+    const ds = addDays(today, -i);
+    const wd = new Date(ds + 'T12:00:00Z').getUTCDay();
+    if ([0, 2, 4].includes(wd)) tdays.push(ds);
+  }
+  allStaff.forEach((s, si) => {
+    tdays.forEach((ds, di) => {
+      if (si === 0 && di === 1) insStaffAtt.run(s.id, ds, 'late', 20); // ك شهد اتأخرت 20 دقيقة
+      else if (si === 2 && di === 2) insStaffAtt.run(s.id, ds, 'absent', 0);
+      else insStaffAtt.run(s.id, ds, 'present', 0);
+    });
+  });
 
   const insertExp = db.prepare('INSERT INTO expenses (title, category, amount, date) VALUES (?,?,?,?)');
   insertExp.run('إيجار الملعب - الشهر ده', 'إيجار', 3000, today.slice(0, 8) + '01');

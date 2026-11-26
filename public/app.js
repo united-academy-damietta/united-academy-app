@@ -140,12 +140,32 @@ async function renderDashboard() {
     <div class="btn-row"><a class="btn block" href="#/attendance">✅ تسجيل حضور النهاردة</a></div>
     <h2 class="section">أكتر اللاعبين حضورًا الشهر ده</h2>
     ${topAttendeeRows(m.top_attendees)}
+    <div id="my-att"></div>
     <h2 class="section">المنقطعين عن التدريب</h2>
     ${dropoutBox(m)}
     <h2 class="section">أيام التدريب الشهر ده (أحد / تلات / خميس)</h2>
     ${trainingDayRows(m.training_days)}
     <h2 class="section">الغائبين الشهر ده</h2>
     ${absenteeRows(m.absentees)}`;
+    // خانة حضور المدرب نفسه (عرض فقط - الإدارة هي اللي بتسجل)
+    try {
+      const mine = await api('/my-attendance');
+      if (mine.linked) {
+        const ST = { present: '✅ حاضر', absent: '❌ غائب', late: '⏰ متأخر' };
+        document.getElementById('my-att').innerHTML = `
+          <h2 class="section">حضوري أنا الشهر ده</h2>
+          <div class="grid">
+            <div class="card stat"><div class="num">${mine.totals.absent}</div><div class="lbl">مرة غياب</div></div>
+            <div class="card stat"><div class="num">${mine.totals.late_minutes}</div><div class="lbl">دقيقة تأخير</div></div>
+          </div>
+          ${mine.rows.length ? mine.rows.map((r) => `
+            <div class="list-item" style="cursor:default">
+              <div class="grow"><div class="name">${r.date}</div></div>
+              <span class="badge ${r.status === 'present' ? 'active' : r.status === 'late' ? 'grace' : 'expired'}">${ST[r.status]}${r.status === 'late' && r.late_minutes ? ' ' + r.late_minutes + ' د' : ''}</span>
+            </div>`).join('') : '<div class="empty">لسه مفيش تسجيل ليك الشهر ده</div>'}
+          <p class="note">الإدارة هي اللي بتسجل حضور وغياب الجهاز - الشاشة دي للعرض بس.</p>`;
+      }
+    } catch (e) {}
     return;
   }
   app.innerHTML = hero + `
@@ -192,7 +212,7 @@ async function renderDashboard() {
               <div class="name">${esc(c.name)}</div>
               <div class="sub">${esc(c.squad || c.role)} - ${c.players_count} لاعب</div>
             </div>
-            <div class="sub" style="text-align:left">✅${c.present_month} ❌${c.absent_month} ⏰${c.late_month}</div>
+            <div class="sub" style="text-align:left">✅${c.present_month} ❌${c.absent_month} ⏰${c.late_month}${c.late_minutes_month ? ` (${c.late_minutes_month} د)` : ''}</div>
           </div>`).join('')}` : '';
     } catch (e) {}
     try {
@@ -786,34 +806,45 @@ async function renderStaff() {
     <input type="date" id="st-date" value="${today}" />
     <div id="staff-body"></div>
     <div id="staff-add"></div>`;
+  const canEdit = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
   async function load(date) {
     const d = await api('/staff?date=' + date);
     document.getElementById('staff-body').innerHTML = d.staff.length ? d.staff.map((m) => `
       <div class="list-item" style="cursor:default">
         <div class="grow">
           <div class="name">${esc(m.name)}</div>
-          <div class="sub">${esc(m.role)}${m.squad ? ' - ' + esc(m.squad) : ''}</div>
+          <div class="sub">${esc(m.role)}${m.squad ? ' - ' + esc(m.squad) : ''}${m.status === 'late' && m.late_minutes ? ` - متأخر ${m.late_minutes} دقيقة` : ''}</div>
         </div>
+        ${canEdit ? `
         <div class="toggle-pill">
           <button data-sid="${m.id}" data-val="present" class="${m.status === 'present' ? 'on-present' : ''}">حاضر</button>
           <button data-sid="${m.id}" data-val="absent" class="${m.status === 'absent' ? 'on-absent' : ''}">غائب</button>
           <button data-sid="${m.id}" data-val="late" class="${m.status === 'late' ? 'on-late' : ''}">متأخر</button>
         </div>
-        ${m.status ? `<button class="btn gray small staff-clear" data-sid="${m.id}">✕</button>` : ''}
+        ${m.status ? `<button class="btn gray small staff-clear" data-sid="${m.id}">✕</button>` : ''}` :
+        (m.status ? `<span class="badge ${m.status === 'present' ? 'active' : m.status === 'late' ? 'grace' : 'expired'}">${m.status === 'present' ? 'حاضر' : m.status === 'late' ? 'متأخر' : 'غائب'}</span>` : '<span class="note">-</span>')}
       </div>`).join('') : '<div class="empty">مفيش أعضاء جهاز</div>';
-    document.querySelectorAll('#staff-body .toggle-pill button').forEach((b) => {
-      b.onclick = async () => {
-        await api('/staff-attendance', { body: { staff_id: b.dataset.sid, date, status: b.dataset.val } });
-        load(date);
-      };
-    });
-    document.querySelectorAll('.staff-clear').forEach((b) => {
-      b.onclick = async () => {
-        await api('/staff-attendance', { body: { staff_id: b.dataset.sid, date, status: null } });
-        toast('اتمسح التسجيل');
-        load(date);
-      };
-    });
+    if (canEdit) {
+      document.querySelectorAll('#staff-body .toggle-pill button').forEach((b) => {
+        b.onclick = async () => {
+          const body = { staff_id: b.dataset.sid, date, status: b.dataset.val };
+          if (b.dataset.val === 'late') {
+            const mins = prompt('اتأخر كام دقيقة؟', '15');
+            if (mins === null) return;
+            body.late_minutes = parseInt(mins, 10) || 0;
+          }
+          await api('/staff-attendance', { body });
+          load(date);
+        };
+      });
+      document.querySelectorAll('.staff-clear').forEach((b) => {
+        b.onclick = async () => {
+          await api('/staff-attendance', { body: { staff_id: b.dataset.sid, date, status: null } });
+          toast('اتمسح التسجيل');
+          load(date);
+        };
+      });
+    }
     if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager')) {
       document.getElementById('staff-add').innerHTML = `
         <h2 class="section">إضافة عضو جهاز</h2>

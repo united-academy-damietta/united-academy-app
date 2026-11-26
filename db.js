@@ -97,6 +97,8 @@ const DEFAULTS = {
 };
 
 try { db.exec('ALTER TABLE players ADD COLUMN squad TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE staff ADD COLUMN user_id INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE staff_attendance ADD COLUMN late_minutes INTEGER NOT NULL DEFAULT 0'); } catch (e) {}
 
 const PLANS = {
   '1': { months: 1, label: 'شهري', amount: 700 },
