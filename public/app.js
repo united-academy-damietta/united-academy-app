@@ -22,11 +22,13 @@ async function api(path, opts) {
 // ---------------- Login ----------------
 function renderLogin() {
   pageTitle.textContent = 'تسجيل الدخول';
+  document.body.classList.add('login-mode');
   document.getElementById('bottomnav').style.display = 'none';
   app.innerHTML = `
-    <div class="card" style="max-width:400px;margin:40px auto;text-align:center">
-      <div style="font-size:40px;margin-bottom:6px">⚽</div>
-      <h2 style="margin-bottom:14px">يونايتد أكاديمي</h2>
+    <div class="card login-card">
+      <img class="login-logo" src="assets/logo.jpg" alt="United Academy" />
+      <h2 style="margin-bottom:2px">يونايتد أكاديمي</h2>
+      <p class="note" style="letter-spacing:2px;margin-bottom:14px">UNITED ACADEMY</p>
       <div style="text-align:right">
         <label>اسم المستخدم</label><input id="l-user" autocomplete="username" />
         <label>كلمة السر</label><input id="l-pass" type="password" autocomplete="current-password" />
@@ -40,6 +42,7 @@ function renderLogin() {
         username: document.getElementById('l-user').value,
         password: document.getElementById('l-pass').value
       }});
+      document.body.classList.remove('login-mode');
       document.getElementById('bottomnav').style.display = '';
       route();
     } catch (e) {
@@ -107,6 +110,13 @@ async function renderDashboard() {
   pageTitle.textContent = 'لوحة التحكم';
   const d = await api('/dashboard');
   app.innerHTML = `
+    <div class="hero">
+      <div class="hero-text">
+        <div class="h-title">يونايتد أكاديمي</div>
+        <div class="h-sub">إدارة الحضور والاشتراكات - دمياط الجديدة</div>
+        <div class="h-line"></div>
+      </div>
+    </div>
     <div class="grid">
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
@@ -493,6 +503,7 @@ async function route() {
   } catch (e) {
     return; // renderLogin already shown by api()
   }
+  document.body.classList.remove('login-mode');
   document.getElementById('bottomnav').style.display = '';
   const hash = location.hash.replace(/^#/, '') || '/';
   document.querySelectorAll('#bottomnav a').forEach((a) => {
