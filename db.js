@@ -48,6 +48,30 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   sent_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'أخرى',
+  amount REAL NOT NULL DEFAULT 0,
+  date TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS staff (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'مدرب',
+  squad TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS staff_attendance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  staff_id INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'present',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(staff_id, date)
+);
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -58,7 +82,7 @@ const DEFAULTS = {
   training_days: '[0,2,4]', // Sunday, Tuesday, Thursday
   grace_days: '7',
   sub_months: '1',
-  sub_amount: '300',
+  sub_amount: '700',
   academy_name: 'يونايتد أكاديمي',
   tpl_payment:
     'أهلًا {parent}، تم استلام اشتراك {player} في {academy} بقيمة {amount} جنيه. الاشتراك ساري حتى {end_date}. شكرًا لثقتكم.',
@@ -70,6 +94,15 @@ const DEFAULTS = {
     'أهلًا {parent}، اشتراك {player} في {academy} انتهى النهاردة. للتجديد رد علينا هنا. في فترة سماح {grace} أيام.',
   tpl_overdue:
     'أهلًا {parent}، اشتراك {player} في {academy} منتهي من {days} أيام ولسه داخل فترة السماح. ياريت التجديد في أقرب وقت عشان مايتوقفش تدريبه.'
+};
+
+try { db.exec('ALTER TABLE players ADD COLUMN squad TEXT'); } catch (e) {}
+
+const PLANS = {
+  '1': { months: 1, label: 'شهري', amount: 700 },
+  '3': { months: 3, label: '3 شهور', amount: 1890 },
+  '6': { months: 6, label: '6 شهور', amount: 3570 },
+  '12': { months: 12, label: 'سنوي', amount: 6720 }
 };
 
 const getSettingStmt = db.prepare('SELECT value FROM settings WHERE key = ?');
@@ -148,6 +181,7 @@ function normalizePhone(p) {
 
 module.exports = {
   db,
+  PLANS,
   DEFAULTS,
   getSetting,
   setSetting,
