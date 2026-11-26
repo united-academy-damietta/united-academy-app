@@ -147,6 +147,7 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; c
 }
 .toggle-pill button.on-present { background: var(--green); color: #fff; }
 .toggle-pill button.on-absent { background: var(--red); color: #fff; }
+.toggle-pill button.on-late { background: var(--amber); color: #fff; }
 
 .msg-card .body {
   background: #fdf2f3; border: 1px solid #f6c9cd; border-radius: 10px;
