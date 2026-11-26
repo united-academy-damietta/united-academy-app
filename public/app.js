@@ -805,7 +805,24 @@ async function renderStaff() {
   app.innerHTML = `
     <input type="date" id="st-date" value="${today}" />
     <div id="staff-body"></div>
+    <div id="staff-month"></div>
     <div id="staff-add"></div>`;
+  // ملخص الشهر لكل عضو جهاز: حضور/غياب/تأخير + مدة التأخير بالدقائق
+  try {
+    const sm = await api('/staff/month');
+    document.getElementById('staff-month').innerHTML = `
+      <h2 class="section">ملخص الشهر - الجهاز (حضور / غياب / مدة التأخير)</h2>
+      ${sm.staff.map((s) => `
+        <div class="list-item" style="cursor:default">
+          <div class="grow">
+            <div class="name">${esc(s.name)}</div>
+            <div class="sub">${esc(s.role)}${s.squad ? ' - ' + esc(s.squad) : ''}</div>
+          </div>
+          <span class="badge active">✅ ${s.present}</span>
+          <span class="badge expired">❌ ${s.absent}</span>
+          <span class="badge grace">⏰ ${s.late_minutes} د (${s.late})</span>
+        </div>`).join('')}`;
+  } catch (e) {}
   const canEdit = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
   async function load(date) {
     const d = await api('/staff?date=' + date);

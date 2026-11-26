@@ -529,6 +529,28 @@ app.post('/api/staff-attendance', asyncWrap((req, res) => {
   res.json({ ok: true });
 }));
 
+// Monthly staff attendance summary (all staff): present/absent/late counts + total late minutes.
+app.get('/api/staff/month', asyncWrap((req, res) => {
+  const today = todayCairo();
+  const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : today.slice(0, 7);
+  const monthStart = month + '-01';
+  const monthEnd = month + '-31';
+  const staff = db.prepare('SELECT id, name, role, squad FROM staff ORDER BY id').all();
+  const rows = db.prepare(
+    `SELECT staff_id, status, late_minutes FROM staff_attendance WHERE date >= ? AND date <= ?`
+  ).all(monthStart, monthEnd);
+  const byStaff = {};
+  rows.forEach((r) => {
+    const t = byStaff[r.staff_id] = byStaff[r.staff_id] || { present: 0, absent: 0, late: 0, late_minutes: 0 };
+    t[r.status] = (t[r.status] || 0) + 1;
+    if (r.status === 'late') t.late_minutes += r.late_minutes || 0;
+  });
+  res.json({
+    month,
+    staff: staff.map((s) => Object.assign({}, s, byStaff[s.id] || { present: 0, absent: 0, late: 0, late_minutes: 0 }))
+  });
+}));
+
 // Coach's own attendance (view only): linked staff record, this month.
 app.get('/api/my-attendance', asyncWrap((req, res) => {
   const me = db.prepare('SELECT id, name, role, squad FROM staff WHERE user_id = ?').get(req.user.id);
