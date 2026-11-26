@@ -81,6 +81,7 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
+const WEEKDAYS = ['الأحد', 'الاتنين', 'التلات', 'الأربع', 'الخميس', 'الجمعة', 'السبت'];
 const STATE = {
   active: { label: 'نشط', cls: 'active' },
   grace: { label: 'فترة سماح', cls: 'grace' },
@@ -120,14 +121,34 @@ document.getElementById('modal-backdrop').addEventListener('click', (e) => {
 async function renderDashboard() {
   pageTitle.textContent = 'لوحة التحكم';
   const d = await api('/dashboard');
-  app.innerHTML = `
+  const hero = `
     <div class="hero">
       <div class="hero-text">
         <div class="h-title">يونايتد أكاديمي</div>
         <div class="h-sub">إدارة الحضور والاشتراكات - دمياط الجديدة</div>
         <div class="h-line"></div>
       </div>
+    </div>`;
+  // Coach dashboard: attendance only - no subscription counts or money.
+  if (currentUser && currentUser.role === 'coach') {
+    const m = await api('/attendance/month');
+    app.innerHTML = hero + `
+    <div class="grid">
+      <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب في مجموعتك</div></div>
+      <div class="card stat"><div class="num">${d.present_today}/${d.players_total}</div><div class="lbl">حضور النهاردة${d.is_training_day ? '' : ' (مفيش تدريب)'}</div></div>
     </div>
+    <div class="btn-row"><a class="btn block" href="#/attendance">✅ تسجيل حضور النهاردة</a></div>
+    <h2 class="section">أكتر اللاعبين حضورًا الشهر ده</h2>
+    ${topAttendeeRows(m.top_attendees)}
+    <h2 class="section">المنقطعين عن التدريب</h2>
+    ${dropoutBox(m)}
+    <h2 class="section">أيام التدريب الشهر ده (أحد / تلات / خميس)</h2>
+    ${trainingDayRows(m.training_days)}
+    <h2 class="section">الغائبين الشهر ده</h2>
+    ${absenteeRows(m.absentees)}`;
+    return;
+  }
+  app.innerHTML = hero + `
     <div class="grid">
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
@@ -173,6 +194,17 @@ async function renderDashboard() {
             </div>
             <div class="sub" style="text-align:left">✅${c.present_month} ❌${c.absent_month} ⏰${c.late_month}</div>
           </div>`).join('')}` : '';
+    } catch (e) {}
+    try {
+      const m = await api('/attendance/month');
+      document.querySelector('.grid').insertAdjacentHTML('afterend', `
+        <h2 class="section">أكتر اللاعبين حضورًا الشهر ده</h2>
+        ${topAttendeeRows(m.top_attendees)}`);
+      document.getElementById('coaches-box').insertAdjacentHTML('beforeend', `
+        <h2 class="section">المنقطعين عن التدريب</h2>
+        ${dropoutBox(m)}
+        <h2 class="section">الغائبين الشهر ده</h2>
+        ${absenteeRows(m.absentees)}`);
     } catch (e) {}
   }
 }
@@ -343,44 +375,147 @@ async function renderPlayer(id) {
 }
 
 // ---------------- Attendance ----------------
+function trainingDayRows(days) {
+  if (!days.length) return '<div class="empty">مفيش أيام تدريب في الشهر ده</div>';
+  return days.map((t) => `
+    <div class="list-item" style="cursor:default">
+      <div class="grow">
+        <div class="name">${WEEKDAYS[t.weekday]} ${t.date.slice(8)}/${t.date.slice(5, 7)}</div>
+      </div>
+      ${t.future ? '<span class="badge none">جاي</span>'
+        : t.recorded ? `<span class="badge active">✅ ${t.present}</span> <span class="badge expired">❌ ${t.absent}</span>`
+        : '<span class="badge grace">ماتسجلش</span>'}
+    </div>`).join('');
+}
+
+function dropoutBox(m) {
+  return `
+    <div class="grid">
+      <div class="card stat"><div class="num">${m.dropout_month}</div><div class="lbl">لاعب انقطع خلال الشهر</div></div>
+      <div class="card stat"><div class="num">${m.dropout_year}</div><div class="lbl">لاعب انقطع خلال السنة</div></div>
+    </div>
+    <p class="note">المنقطع = لاعب ماعندوش حضور مسجل من أسبوعين أو أكتر.</p>`;
+}
+
+function topAttendeeRows(top) {
+  if (!top || !top.length) return '<div class="empty">لسه مفيش حضور مسجل الشهر ده</div>';
+  const medals = ['🥇', '🥈', '🥉'];
+  return top.map((p, i) => `
+    <div class="list-item" style="cursor:default">
+      <div class="grow"><div class="name">${medals[i] || '⭐'} ${esc(p.name)}</div></div>
+      <span class="badge active">حضر ${p.present_days} ${p.present_days === 1 ? 'يوم' : 'أيام'}</span>
+    </div>`).join('');
+}
+
+function absenteeRows(absentees) {
+  if (!absentees.length) return '<div class="empty">مفيش غياب مسجل الشهر ده 👌</div>';
+  return absentees.map((p) => `
+    <div class="list-item" style="cursor:default">
+      <div class="grow"><div class="name">${esc(p.name)}</div></div>
+      <span class="badge expired">غاب ${p.absent_days} ${p.absent_days === 1 ? 'يوم' : 'أيام'}</span>
+    </div>`).join('');
+}
+
 async function renderAttendance() {
   pageTitle.textContent = 'الحضور';
   const today = todayLocal();
+  const fullRole = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
   app.innerHTML = `
-    <input type="date" id="att-date" value="${today}" />
-    <div id="att-body"></div>`;
-  async function load(date) {
+    <div class="tabs">
+      <button data-tab="day" class="active">تسجيل يوم</button>
+      <button data-tab="month">ملخص الشهر</button>
+    </div>
+    <div id="att-day-wrap">
+      <input type="date" id="att-date" value="${today}" />
+      <div id="att-body"></div>
+    </div>
+    <div id="att-month-wrap" class="hidden">
+      <input type="month" id="att-monthpick" value="${today.slice(0, 7)}" />
+      <div id="month-body"></div>
+    </div>`;
+
+  // ---- tab switching ----
+  document.querySelectorAll('.tabs button').forEach((b) => {
+    b.onclick = () => {
+      document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x === b));
+      const monthMode = b.dataset.tab === 'month';
+      document.getElementById('att-day-wrap').classList.toggle('hidden', monthMode);
+      document.getElementById('att-month-wrap').classList.toggle('hidden', !monthMode);
+      if (monthMode) loadMonth(document.getElementById('att-monthpick').value);
+    };
+  });
+
+  // ---- day view: mark everyone, confirm, save the day in one go ----
+  async function loadDay(date) {
     const d = await api('/attendance?date=' + date);
+    const pending = {};
+    d.players.forEach((p) => { if (p.present !== null) pending[p.id] = p.present; });
     const body = document.getElementById('att-body');
     if (!d.is_training_day) {
-      body.innerHTML = `<div class="empty">اليوم ده مش يوم تدريب (التدريب أحد / تلات / خميس). تقدر تسجل حضور استثنائي برضه.</div>` +
-        playerRows(d.players);
+      body.innerHTML = `<div class="empty">اليوم ده مش يوم تدريب (التدريب أحد / تلات / خميس). تقدر تسجل حضور استثنائي برضه.</div>`;
     } else {
-      body.innerHTML = playerRows(d.players) + `
-        <div class="btn-row">
-          <button class="btn block" id="close-day">إغلاق اليوم وتجهيز رسائل الغياب</button>
-        </div>
-        <p class="note" style="margin-top:8px">الزر ده بيجهز مسودة رسالة لكل لاعب غائب - الرسائل بتتراجع وتتبعت بإيدك من شاشة الرسائل.</p>`;
-      document.getElementById('close-day').onclick = async () => {
-        const r = await api('/attendance/close', { body: { date } });
-        toast(`اتجهزت ${r.absence_drafts_created} رسالة غياب`);
+      body.innerHTML = '';
+    }
+    body.insertAdjacentHTML('beforeend', playerRows(d.players));
+    body.insertAdjacentHTML('beforeend', `
+      <div class="btn-row">
+        <button class="btn block" id="save-day">💾 حفظ حضور اليوم</button>
+      </div>
+      <p class="note" id="att-count" style="margin-top:6px"></p>
+      ${fullRole && d.is_training_day ? `
+      <div class="btn-row">
+        <button class="btn secondary block" id="close-day">إغلاق اليوم وتجهيز رسائل الغياب</button>
+      </div>
+      <p class="note" style="margin-top:8px">زر الإغلاق بيجهز مسودة رسالة لكل لاعب غائب - الرسائل بتتراجع وتتبعت بإيدك من شاشة الرسائل.</p>` : ''}`);
+    function refreshCount() {
+      const vals = Object.values(pending);
+      const nPresent = vals.filter((v) => v === true).length;
+      const nAbsent = vals.filter((v) => v === false).length;
+      document.getElementById('att-count').textContent =
+        `مسجل لحد دلوقتي: ${nPresent} حاضر - ${nAbsent} غائب - من ${d.players.length} لاعب`;
+    }
+    refreshCount();
+    body.querySelectorAll('.toggle-pill button').forEach((btn) => {
+      btn.onclick = () => {
+        const pid = btn.dataset.pid;
+        pending[pid] = btn.dataset.val === '1';
+        const pill = btn.closest('.list-item');
+        pill.querySelectorAll('.toggle-pill button').forEach((x) => x.classList.remove('on-present', 'on-absent'));
+        btn.classList.add(btn.dataset.val === '1' ? 'on-present' : 'on-absent');
+        let clr = pill.querySelector('.att-clear');
+        if (!clr) {
+          pill.insertAdjacentHTML('beforeend', `<button class="btn gray small att-clear" data-pid="${pid}" title="مسح التسجيل">✕</button>`);
+          bindClear(pill.querySelector('.att-clear'));
+        }
+        refreshCount();
+      };
+    });
+    function bindClear(btn) {
+      btn.onclick = () => {
+        const pid = btn.dataset.pid;
+        pending[pid] = null; // will be cleared on save
+        const pill = btn.closest('.list-item');
+        pill.querySelectorAll('.toggle-pill button').forEach((x) => x.classList.remove('on-present', 'on-absent'));
+        btn.remove();
+        refreshCount();
       };
     }
-    body.querySelectorAll('.toggle-pill button').forEach((btn) => {
-      btn.onclick = async () => {
-        const pid = btn.dataset.pid;
-        const present = btn.dataset.val === '1';
-        await api('/attendance', { body: { player_id: pid, date, present } });
-        load(date);
-      };
-    });
-    body.querySelectorAll('.att-clear').forEach((btn) => {
-      btn.onclick = async () => {
-        await api('/attendance', { body: { player_id: btn.dataset.pid, date, present: null } });
-        toast('اتمسح التسجيل');
-        load(date);
-      };
-    });
+    body.querySelectorAll('.att-clear').forEach(bindClear);
+    document.getElementById('save-day').onclick = async () => {
+      const marks = Object.entries(pending).map(([pid, v]) => ({ player_id: Number(pid), present: v }));
+      const nPresent = marks.filter((m) => m.present === true).length;
+      const nAbsent = marks.filter((m) => m.present === false).length;
+      if (!marks.length) { toast('سجل حاضر/غائب للاعبين الأول'); return; }
+      if (!confirm(`تأكيد حفظ حضور يوم ${date}؟\nحاضر: ${nPresent} - غائب: ${nAbsent}`)) return;
+      const r = await api('/attendance/bulk', { body: { date, marks } });
+      toast(`اتحفظ اليوم ✅ (${r.present} حاضر - ${r.absent} غائب)`);
+      loadDay(date);
+    };
+    const closeBtn = document.getElementById('close-day');
+    if (closeBtn) closeBtn.onclick = async () => {
+      const r = await api('/attendance/close', { body: { date } });
+      toast(`اتجهزت ${r.absence_drafts_created} رسالة غياب`);
+    };
   }
   function playerRows(players) {
     if (!players.length) return '<div class="empty">مفيش لاعبين</div>';
@@ -397,8 +532,27 @@ async function renderAttendance() {
         ${p.present !== null ? `<button class="btn gray small att-clear" data-pid="${p.id}" title="مسح التسجيل">✕</button>` : ''}
       </div>`).join('');
   }
-  await load(today);
-  document.getElementById('att-date').onchange = (e) => load(e.target.value);
+
+  // ---- month view: training days, absentees, per-player attendance days ----
+  async function loadMonth(month) {
+    const m = await api('/attendance/month?month=' + month);
+    document.getElementById('month-body').innerHTML = `
+      <h2 class="section">أيام التدريب (أحد / تلات / خميس)</h2>
+      ${trainingDayRows(m.training_days)}
+      <h2 class="section">الغائبين خلال الشهر</h2>
+      ${absenteeRows(m.absentees)}
+      <h2 class="section">أيام حضور كل لاعب</h2>
+      ${m.players.length ? m.players.map((p) => `
+        <div class="list-item" style="cursor:default">
+          <div class="grow"><div class="name">${esc(p.name)}</div></div>
+          <span class="badge active">حضر ${p.present_days}</span>
+          ${p.absent_days ? `<span class="badge expired">غاب ${p.absent_days}</span>` : ''}
+        </div>`).join('') : '<div class="empty">مفيش لاعبين</div>'}`;
+  }
+
+  await loadDay(today);
+  document.getElementById('att-date').onchange = (e) => loadDay(e.target.value);
+  document.getElementById('att-monthpick').onchange = (e) => loadMonth(e.target.value);
 }
 
 // ---------------- Messages ----------------

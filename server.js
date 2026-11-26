@@ -8,6 +8,7 @@ const {
   getSettingInt,
   todayCairo,
   addMonths,
+  diffDays,
   currentSub,
   subState,
   DEFAULTS,
@@ -95,19 +96,20 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
     ? db.prepare(`SELECT COUNT(*) AS present FROM attendance a JOIN players p ON p.id=a.player_id WHERE a.date = ? AND a.present = 1 AND p.squad = ?`).get(today, squad)
     : db.prepare(`SELECT COUNT(*) AS present FROM attendance WHERE date = ? AND present = 1`).get(today);
   const drafts = db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE status='draft'`).get();
+  const isCoach = req.user.role === 'coach';
   res.json({
     today,
     is_training_day: JSON.parse(getSetting('training_days')).includes(new Date(today + 'T12:00:00Z').getUTCDay()),
     players_total: players.length,
-    subs_active: activeSubs.length,
-    renewals_due: renewals.map((p) => ({
+    subs_active: isCoach ? null : activeSubs.length,
+    renewals_due: isCoach ? [] : renewals.map((p) => ({
       id: p.id, name: p.name, days_left: p.days_left, sub_state: p.sub_state,
       end_date: p.subscription.end_date
     })),
-    collected_month: collected.total,
-    payments_month: collected.n,
+    collected_month: isCoach ? null : collected.total,
+    payments_month: isCoach ? null : collected.n,
     present_today: att.present,
-    draft_messages: drafts.n
+    draft_messages: isCoach ? null : drafts.n
   });
 }));
 
@@ -237,6 +239,112 @@ app.post('/api/attendance', asyncWrap((req, res) => {
      ON CONFLICT(player_id, date) DO UPDATE SET present = excluded.present`
   ).run(player_id, date, present ? 1 : 0);
   res.json({ ok: true });
+}));
+
+// Bulk save attendance marks for a date (coach flow: mark all, confirm, save the day).
+app.post('/api/attendance/bulk', asyncWrap((req, res) => {
+  const { date, marks } = req.body || {};
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'التاريخ مطلوب' });
+  if (!Array.isArray(marks)) return res.status(400).json({ error: 'marks مطلوبة' });
+  const squad = coachSquad(req);
+  const squadStmt = db.prepare('SELECT squad FROM players WHERE id = ?');
+  const upsert = db.prepare(
+    `INSERT INTO attendance (player_id, date, present) VALUES (?,?,?)
+     ON CONFLICT(player_id, date) DO UPDATE SET present = excluded.present`
+  );
+  const del = db.prepare('DELETE FROM attendance WHERE player_id = ? AND date = ?');
+  let saved = 0;
+  let presentCount = 0;
+  let absentCount = 0;
+  db.transaction(() => {
+    for (const mk of marks.slice(0, 500)) {
+      const pid = parseInt(mk.player_id, 10);
+      if (!Number.isFinite(pid)) continue;
+      if (squad) {
+        const p = squadStmt.get(pid);
+        if (!p || p.squad !== squad) continue;
+      }
+      if (mk.present === null) {
+        del.run(pid, date);
+      } else {
+        upsert.run(pid, date, mk.present ? 1 : 0);
+        if (mk.present) presentCount++; else absentCount++;
+      }
+      saved++;
+    }
+  })();
+  res.json({ ok: true, saved, present: presentCount, absent: absentCount });
+}));
+
+// Monthly attendance summary: training days with per-day counts, per-player days, absentees list.
+app.get('/api/attendance/month', asyncWrap((req, res) => {
+  const today = todayCairo();
+  const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : today.slice(0, 7);
+  const trainingDays = JSON.parse(getSetting('training_days'));
+  const [y, m] = month.split('-').map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const lastDay = `${month}-${String(daysInMonth).padStart(2, '0')}`;
+  const squad = coachSquad(req);
+  const params = squad ? [month + '-01', lastDay, squad] : [month + '-01', lastDay];
+  const attRows = db.prepare(
+    `SELECT a.date, a.player_id, a.present FROM attendance a JOIN players p ON p.id = a.player_id
+     WHERE a.date >= ? AND a.date <= ? ${squad ? 'AND p.squad = ?' : ''}`
+  ).all(...params);
+  const players = squad
+    ? db.prepare(`SELECT id, name FROM players WHERE status='active' AND squad = ? ORDER BY name`).all(squad)
+    : db.prepare(`SELECT id, name FROM players WHERE status='active' ORDER BY name`).all();
+  const byDate = {};
+  const byPlayer = {};
+  attRows.forEach((r) => {
+    byDate[r.date] = byDate[r.date] || { present: 0, absent: 0 };
+    byDate[r.date][r.present ? 'present' : 'absent']++;
+    byPlayer[r.player_id] = byPlayer[r.player_id] || { present_days: 0, absent_days: 0 };
+    byPlayer[r.player_id][r.present ? 'present_days' : 'absent_days']++;
+  });
+  const days = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${month}-${String(d).padStart(2, '0')}`;
+    const wd = new Date(ds + 'T12:00:00Z').getUTCDay();
+    if (!trainingDays.includes(wd)) continue;
+    const c = byDate[ds];
+    days.push({
+      date: ds,
+      weekday: wd,
+      future: ds > today,
+      recorded: !!c,
+      present: c ? c.present : 0,
+      absent: c ? c.absent : 0
+    });
+  }
+  const perPlayer = players.map((p) => {
+    const c = byPlayer[p.id] || { present_days: 0, absent_days: 0 };
+    return { id: p.id, name: p.name, present_days: c.present_days, absent_days: c.absent_days };
+  });
+  // Dropouts: active players whose last recorded presence is >= 14 days ago.
+  // "month" = last presence 14-30 days ago; "year" = 14-365 days ago (includes month).
+  const lastRows = db.prepare(
+    `SELECT p.id, MAX(a.date) AS last_present FROM players p
+     JOIN attendance a ON a.player_id = p.id AND a.present = 1
+     WHERE p.status = 'active' ${squad ? 'AND p.squad = ?' : ''} GROUP BY p.id`
+  ).all(...(squad ? [squad] : []));
+  let dropoutMonth = 0;
+  let dropoutYear = 0;
+  lastRows.forEach((r) => {
+    const since = diffDays(r.last_present, today);
+    if (since >= 14 && since <= 365) {
+      dropoutYear++;
+      if (since <= 30) dropoutMonth++;
+    }
+  });
+  res.json({
+    month,
+    training_days: days,
+    players: perPlayer,
+    absentees: perPlayer.filter((p) => p.absent_days > 0).sort((a, b) => b.absent_days - a.absent_days || a.name.localeCompare(b.name, 'ar')),
+    top_attendees: perPlayer.filter((p) => p.present_days > 0).sort((a, b) => b.present_days - a.present_days || a.name.localeCompare(b.name, 'ar')).slice(0, 5),
+    dropout_month: dropoutMonth,
+    dropout_year: dropoutYear
+  });
 }));
 
 // Close a training day: create absence drafts for everyone not marked present.
