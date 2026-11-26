@@ -1,5 +1,16 @@
 // United Academy admin - single page app (no build step).
 const app = document.getElementById('app');
+let currentUser = null;
+const NAV_RULES = {
+  coach: ['/', '/players', '/attendance'],
+  staff: ['/staff']
+};
+function applyRoleNav() {
+  const allowed = currentUser && NAV_RULES[currentUser.role];
+  document.querySelectorAll('#bottomnav a').forEach((a) => {
+    a.style.display = allowed && !allowed.includes(a.dataset.route) ? 'none' : '';
+  });
+}
 const pageTitle = document.getElementById('page-title');
 
 async function api(path, opts) {
@@ -123,6 +134,7 @@ async function renderDashboard() {
       <div class="card stat"><div class="num">${d.collected_month}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
       <div class="card stat"><div class="num">${d.present_today}/${d.subs_active}</div><div class="lbl">حضور النهاردة${d.is_training_day ? '' : ' (مفيش تدريب)'}</div></div>
     </div>
+    <div id="coaches-box"></div>
     <h2 class="section">تجديدات مستنية (خلال 7 أيام أو متأخرة)</h2>
     ${d.renewals_due.length ? d.renewals_due.map((p) => `
       <div class="list-item" onclick="location.hash='#/player/${p.id}'">
@@ -141,6 +153,28 @@ async function renderDashboard() {
     toast(`اتعمل ${r.renewals} تذكير جديد`);
     renderDashboard();
   };
+  if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager')) {
+    try {
+      const f = await api('/finance');
+      document.querySelector('.grid').insertAdjacentHTML('beforeend', `
+        <div class="card stat"><div class="num">${f.expenses_month}</div><div class="lbl">مصاريف الشهر</div></div>
+        <div class="card stat"><div class="num">${f.expenses_year}</div><div class="lbl">مصاريف السنة</div></div>
+        <div class="card stat"><div class="num" style="color:${f.net_year >= 0 ? 'var(--green-dark)' : 'var(--red)'}">${f.net_year}</div><div class="lbl">صافي السنة</div></div>`);
+    } catch (e) {}
+    try {
+      const coaches = await api('/coaches-overview');
+      document.getElementById('coaches-box').innerHTML = coaches.length ? `
+        <h2 class="section">المدربين ومجموعاتهم (الشهر ده)</h2>
+        ${coaches.map((c) => `
+          <div class="list-item" style="cursor:default">
+            <div class="grow">
+              <div class="name">${esc(c.name)}</div>
+              <div class="sub">${esc(c.squad || c.role)} - ${c.players_count} لاعب</div>
+            </div>
+            <div class="sub" style="text-align:left">✅${c.present_month} ❌${c.absent_month} ⏰${c.late_month}</div>
+          </div>`).join('')}` : '';
+    } catch (e) {}
+  }
 }
 
 // ---------------- Players ----------------
@@ -235,23 +269,39 @@ async function renderPlayer(id) {
       <div class="card"><div class="kv"><span class="k">${MSG_TYPES[m.type] || m.type}</span><span>${m.status === 'sent' ? '✅ اتبعتت' : m.status === 'dismissed' ? 'اتجاهلت' : '📝 مسودة'}</span></div></div>
     `).join('') : '<div class="empty">لا يوجد</div>'}`;
   document.getElementById('renew-btn').onclick = async () => {
-    const st = await api('/settings');
+    const plans = await api('/plans');
+    const planOpts = Object.entries(plans).map(([k, v]) =>
+      `<option value="${k}">${v.label} - ${v.amount} جنيه</option>`).join('');
     openModal(`
       <h3>${p.subscription ? 'تجديد اشتراك' : 'اشتراك جديد'} - ${esc(p.name)}</h3>
       <label>تاريخ البداية</label><input id="s-start" type="date" value="${todayLocal()}" />
-      <label>المدة (شهور)</label><input id="s-months" type="number" min="1" value="${esc(st.sub_months)}" />
-      <label>المبلغ (جنيه)</label><input id="s-amount" type="number" min="0" value="${esc(st.sub_amount)}" />
+      <label>خطة الاشتراك</label>
+      <select id="s-plan">
+        ${planOpts}
+        <option value="custom">مخصص</option>
+      </select>
+      <div id="s-custom" class="hidden">
+        <label>المدة (شهور)</label><input id="s-months" type="number" min="1" value="1" />
+        <label>المبلغ (جنيه)</label><input id="s-amount" type="number" min="0" value="700" />
+      </div>
       <p class="note">هيتجهز رسالة تأكيد واتساب كمسودة في شاشة الرسائل - مفيش إرسال تلقائي.</p>
       <div class="btn-row">
         <button class="btn gray" onclick="closeModal()">إلغاء</button>
         <button class="btn" id="sub-save">حفظ الاشتراك</button>
       </div>`);
+    document.getElementById('s-plan').onchange = (e) => {
+      document.getElementById('s-custom').classList.toggle('hidden', e.target.value !== 'custom');
+    };
     document.getElementById('sub-save').onclick = async () => {
-      await api(`/players/${id}/subscriptions`, { body: {
-        start_date: document.getElementById('s-start').value,
-        months: document.getElementById('s-months').value,
-        amount: document.getElementById('s-amount').value
-      }});
+      const plan = document.getElementById('s-plan').value;
+      const body = { start_date: document.getElementById('s-start').value };
+      if (plan === 'custom') {
+        body.months = document.getElementById('s-months').value;
+        body.amount = document.getElementById('s-amount').value;
+      } else {
+        body.plan = plan;
+      }
+      await api(`/players/${id}/subscriptions`, { body });
       closeModal();
       toast('اتسجل الاشتراك ✅ ورسالة التأكيد في الرسائل');
       renderPlayer(id);
@@ -324,6 +374,13 @@ async function renderAttendance() {
         load(date);
       };
     });
+    body.querySelectorAll('.att-clear').forEach((btn) => {
+      btn.onclick = async () => {
+        await api('/attendance', { body: { player_id: btn.dataset.pid, date, present: null } });
+        toast('اتمسح التسجيل');
+        load(date);
+      };
+    });
   }
   function playerRows(players) {
     if (!players.length) return '<div class="empty">مفيش لاعبين</div>';
@@ -337,6 +394,7 @@ async function renderAttendance() {
           <button data-pid="${p.id}" data-val="1" class="${p.present === true ? 'on-present' : ''}">حاضر</button>
           <button data-pid="${p.id}" data-val="0" class="${p.present === false ? 'on-absent' : ''}">غائب</button>
         </div>
+        ${p.present !== null ? `<button class="btn gray small att-clear" data-pid="${p.id}" title="مسح التسجيل">✕</button>` : ''}
       </div>`).join('');
   }
   await load(today);
@@ -428,6 +486,21 @@ async function renderSettings() {
       <div id="users-list"></div>
       <label>اسم مستخدم جديد</label><input id="u-name" />
       <label>كلمة السر</label><input id="u-pass" type="password" />
+        <label>الدور</label>
+        <select id="u-role">
+          <option value="coach">مدرب (مجموعته بس)</option>
+          <option value="manager">صلاحية كاملة</option>
+          <option value="staff">الجهاز فقط</option>
+        </select>
+        <label>المجموعة (للمدربين)</label>
+        <select id="u-squad">
+          <option value="">-</option>
+          <option>كيدز 2019-2021</option>
+          <option>2017-2018</option>
+          <option>2015-2016</option>
+          <option>2013-2014</option>
+          <option>حراس</option>
+        </select>
       <div class="btn-row">
         <button class="btn secondary" id="u-add">إضافة مستخدم</button>
         <button class="btn gray" id="logout-btn">تسجيل خروج</button>
@@ -490,19 +563,146 @@ async function renderSettings() {
 }
 
 // ---------------- Router ----------------
+// ---------------- Expenses & finance ----------------
+async function renderExpenses() {
+  pageTitle.textContent = 'المصاريف والمالية';
+  const f = await api('/finance');
+  const today = todayLocal();
+  app.innerHTML = `
+    <div class="grid">
+      <div class="card stat"><div class="num">${f.revenue_month}</div><div class="lbl">إيرادات الشهر</div></div>
+      <div class="card stat"><div class="num">${f.expenses_month}</div><div class="lbl">مصاريف الشهر</div></div>
+      <div class="card stat"><div class="num">${f.revenue_year}</div><div class="lbl">محصلة السنة</div></div>
+      <div class="card stat"><div class="num">${f.expenses_year}</div><div class="lbl">مصاريف السنة</div></div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="lbl" style="color:var(--muted);font-size:13px">صافي السنة</div>
+      <div class="num" style="font-size:30px;font-weight:800;color:${f.net_year >= 0 ? 'var(--green-dark)' : 'var(--red)'}">${f.net_year} جنيه</div>
+      <div class="note">صافي الشهر: ${f.net_month} جنيه</div>
+    </div>
+    <h2 class="section">تسجيل مصروف</h2>
+    <div class="card">
+      <label>البيان</label><input id="e-title" placeholder="مثال: إيجار الملعب" />
+      <label>النوع</label>
+      <select id="e-cat"><option>إيجار</option><option>مرتبات</option><option>معدات</option><option>أخرى</option></select>
+      <label>المبلغ (جنيه)</label><input id="e-amount" type="number" min="0" />
+      <label>التاريخ</label><input id="e-date" type="date" value="${today}" />
+      <button class="btn block" id="e-save">حفظ المصروف</button>
+    </div>
+    <h2 class="section">آخر المصاريف</h2>
+    <div id="exp-list"></div>`;
+  async function loadExp() {
+    const rows = await api('/expenses');
+    document.getElementById('exp-list').innerHTML = rows.length ? rows.map((e) => `
+      <div class="list-item" style="cursor:default">
+        <div class="grow">
+          <div class="name">${esc(e.title)}</div>
+          <div class="sub">${esc(e.category)} - ${e.date}</div>
+        </div>
+        <span class="badge expired">${e.amount} ج</span>
+        <button class="btn gray small exp-del" data-id="${e.id}">✕</button>
+      </div>`).join('') : '<div class="empty">مفيش مصاريف مسجلة</div>';
+    document.querySelectorAll('.exp-del').forEach((b) => {
+      b.onclick = async () => {
+        await api('/expenses/' + b.dataset.id, { method: 'DELETE' });
+        toast('اتمسح المصروف');
+        renderExpenses();
+      };
+    });
+  }
+  document.getElementById('e-save').onclick = async () => {
+    await api('/expenses', { body: {
+      title: document.getElementById('e-title').value,
+      category: document.getElementById('e-cat').value,
+      amount: document.getElementById('e-amount').value,
+      date: document.getElementById('e-date').value
+    }});
+    toast('اتسجل المصروف ✅');
+    renderExpenses();
+  };
+  await loadExp();
+}
+
+// ---------------- Staff (الجهاز الفني والإداري) ----------------
+const STAFF_STATUS = { present: 'حاضر', absent: 'غائب', late: 'متأخر' };
+async function renderStaff() {
+  pageTitle.textContent = 'الجهاز الفني والإداري';
+  const today = todayLocal();
+  app.innerHTML = `
+    <input type="date" id="st-date" value="${today}" />
+    <div id="staff-body"></div>
+    <div id="staff-add"></div>`;
+  async function load(date) {
+    const d = await api('/staff?date=' + date);
+    document.getElementById('staff-body').innerHTML = d.staff.length ? d.staff.map((m) => `
+      <div class="list-item" style="cursor:default">
+        <div class="grow">
+          <div class="name">${esc(m.name)}</div>
+          <div class="sub">${esc(m.role)}${m.squad ? ' - ' + esc(m.squad) : ''}</div>
+        </div>
+        <div class="toggle-pill">
+          <button data-sid="${m.id}" data-val="present" class="${m.status === 'present' ? 'on-present' : ''}">حاضر</button>
+          <button data-sid="${m.id}" data-val="absent" class="${m.status === 'absent' ? 'on-absent' : ''}">غائب</button>
+          <button data-sid="${m.id}" data-val="late" class="${m.status === 'late' ? 'on-late' : ''}">متأخر</button>
+        </div>
+        ${m.status ? `<button class="btn gray small staff-clear" data-sid="${m.id}">✕</button>` : ''}
+      </div>`).join('') : '<div class="empty">مفيش أعضاء جهاز</div>';
+    document.querySelectorAll('#staff-body .toggle-pill button').forEach((b) => {
+      b.onclick = async () => {
+        await api('/staff-attendance', { body: { staff_id: b.dataset.sid, date, status: b.dataset.val } });
+        load(date);
+      };
+    });
+    document.querySelectorAll('.staff-clear').forEach((b) => {
+      b.onclick = async () => {
+        await api('/staff-attendance', { body: { staff_id: b.dataset.sid, date, status: null } });
+        toast('اتمسح التسجيل');
+        load(date);
+      };
+    });
+    if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager')) {
+      document.getElementById('staff-add').innerHTML = `
+        <h2 class="section">إضافة عضو جهاز</h2>
+        <div class="card">
+          <label>الاسم</label><input id="ns-name" />
+          <label>الدور</label><input id="ns-role" placeholder="مدرب / إداري / ..." />
+          <label>المجموعة (اختياري)</label>
+          <select id="ns-squad"><option value="">-</option><option>كيدز 2019-2021</option><option>2017-2018</option><option>2015-2016</option><option>2013-2014</option><option>حراس</option></select>
+          <button class="btn block" id="ns-save">إضافة</button>
+        </div>`;
+      document.getElementById('ns-save').onclick = async () => {
+        await api('/staff', { body: {
+          name: document.getElementById('ns-name').value,
+          role: document.getElementById('ns-role').value,
+          squad: document.getElementById('ns-squad').value || null
+        }});
+        toast('اتضاف ✅');
+        renderStaff();
+      };
+    }
+  }
+  await load(today);
+  document.getElementById('st-date').onchange = (e) => load(e.target.value);
+}
+
 const routes = {
   '/': renderDashboard,
   '/players': renderPlayers,
   '/attendance': renderAttendance,
   '/messages': renderMessages,
+  '/expenses': renderExpenses,
+  '/staff': renderStaff,
   '/settings': renderSettings
 };
 async function route() {
+  let me;
   try {
-    await api('/me');
+    me = await api('/me');
   } catch (e) {
     return; // renderLogin already shown by api()
   }
+  currentUser = me;
+  applyRoleNav();
   document.body.classList.remove('login-mode');
   document.getElementById('bottomnav').style.display = '';
   const hash = location.hash.replace(/^#/, '') || '/';
@@ -510,6 +710,11 @@ async function route() {
     a.classList.toggle('active', a.dataset.route === hash || (hash.startsWith('/player/') && a.dataset.route === '/players'));
   });
   try {
+    const allowed = NAV_RULES[currentUser.role];
+    if (allowed && !allowed.includes(hash) && !hash.startsWith('/player/')) {
+      location.hash = '#' + allowed[0];
+      return;
+    }
     const m = hash.match(/^\/player\/(\d+)$/);
     if (m) await renderPlayer(m[1]);
     else await (routes[hash] || renderDashboard)();
