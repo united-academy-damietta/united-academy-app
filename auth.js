@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 `);
 
+try { db.exec('ALTER TABLE users ADD COLUMN squad TEXT'); } catch (e) {}
+
 const SESSION_COOKIE = 'ua_session';
 const SESSION_TTL_DAYS = 30;
 
@@ -33,15 +35,15 @@ function verifyPassword(password, stored) {
   return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
 }
 
-function createUser(username, password, role) {
+function createUser(username, password, role, squad) {
   const info = db
-    .prepare('INSERT INTO users (username, pass_hash, role) VALUES (?,?,?)')
-    .run(String(username).trim(), hashPassword(password), role || 'staff');
+    .prepare('INSERT INTO users (username, pass_hash, role, squad) VALUES (?,?,?,?)')
+    .run(String(username).trim(), hashPassword(password), role || 'staff', squad || null);
   return info.lastInsertRowid;
 }
 
 function ensureAdmin() {
-  const n = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  const n = db.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'admin'").get().n;
   if (n === 0) {
     createUser('admin', process.env.ADMIN_PASSWORD || 'united2026', 'admin');
     console.log('Created default admin user (username: admin).');
@@ -53,7 +55,7 @@ function login(username, password) {
   if (!u || !verifyPassword(password || '', u.pass_hash)) return null;
   const token = crypto.randomBytes(32).toString('hex');
   db.prepare('INSERT INTO sessions (token, user_id) VALUES (?,?)').run(token, u.id);
-  return { token, user: { id: u.id, username: u.username, role: u.role } };
+  return { token, user: { id: u.id, username: u.username, role: u.role, squad: u.squad } };
 }
 
 function logout(token) {
@@ -64,7 +66,7 @@ function userForToken(token) {
   if (!token) return null;
   const row = db
     .prepare(
-      `SELECT u.id, u.username, u.role, s.created_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`
+      `SELECT u.id, u.username, u.role, u.squad, s.created_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`
     )
     .get(token);
   if (!row) return null;
@@ -73,7 +75,7 @@ function userForToken(token) {
     logout(token);
     return null;
   }
-  return { id: row.id, username: row.username, role: row.role };
+  return { id: row.id, username: row.username, role: row.role, squad: row.squad };
 }
 
 function cookieToken(req) {
