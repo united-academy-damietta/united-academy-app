@@ -10,7 +10,8 @@ const {
   addMonths,
   currentSub,
   subState,
-  DEFAULTS
+  DEFAULTS,
+  PLANS
 } = require('./db');
 const automation = require('./automation');
 const { seedIfEmpty } = require('./seed');
@@ -55,6 +56,15 @@ const asyncWrap = (fn) => (req, res) => {
   }
 };
 
+function requireFull(req, res) {
+  if (req.user.role === 'admin' || req.user.role === 'manager') return true;
+  res.status(403).json({ error: 'مش مسموح' });
+  return false;
+}
+function coachSquad(req) {
+  return req.user.role === 'coach' ? (req.user.squad || '\\u2063none') : null;
+}
+
 function decoratePlayer(p, today) {
   const sub = currentSub(p.id);
   const st = subState(sub, today);
@@ -68,7 +78,10 @@ function decoratePlayer(p, today) {
 // ---------- dashboard ----------
 app.get('/api/dashboard', asyncWrap((req, res) => {
   const today = todayCairo();
-  const players = db.prepare(`SELECT * FROM players WHERE status='active'`).all();
+  const squad = coachSquad(req);
+  const players = squad
+    ? db.prepare(`SELECT * FROM players WHERE status='active' AND squad = ?`).all(squad)
+    : db.prepare(`SELECT * FROM players WHERE status='active'`).all();
   const decorated = players.map((p) => decoratePlayer(p, today));
   const activeSubs = decorated.filter((p) => p.sub_state === 'active' || p.sub_state === 'grace');
   const renewals = decorated
@@ -78,9 +91,9 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
   const collected = db
     .prepare(`SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM subscriptions WHERE start_date >= ?`)
     .get(monthStart);
-  const att = db
-    .prepare(`SELECT COUNT(*) AS present FROM attendance WHERE date = ? AND present = 1`)
-    .get(today);
+  const att = squad
+    ? db.prepare(`SELECT COUNT(*) AS present FROM attendance a JOIN players p ON p.id=a.player_id WHERE a.date = ? AND a.present = 1 AND p.squad = ?`).get(today, squad)
+    : db.prepare(`SELECT COUNT(*) AS present FROM attendance WHERE date = ? AND present = 1`).get(today);
   const drafts = db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE status='draft'`).get();
   res.json({
     today,
@@ -102,8 +115,15 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
 app.get('/api/players', asyncWrap((req, res) => {
   const today = todayCairo();
   const q = (req.query.search || '').trim();
+  const squad = coachSquad(req);
   let rows;
-  if (q) {
+  if (squad) {
+    if (q) {
+      rows = db.prepare(`SELECT * FROM players WHERE squad = ? AND (name LIKE ? OR parent_name LIKE ? OR parent_phone LIKE ?) ORDER BY name`).all(squad, `%${q}%`, `%${q}%`, `%${q}%`);
+    } else {
+      rows = db.prepare(`SELECT * FROM players WHERE squad = ? ORDER BY name`).all(squad);
+    }
+  } else if (q) {
     rows = db.prepare(
       `SELECT * FROM players WHERE name LIKE ? OR parent_name LIKE ? OR parent_phone LIKE ? ORDER BY name`
     ).all(`%${q}%`, `%${q}%`, `%${q}%`);
@@ -114,6 +134,7 @@ app.get('/api/players', asyncWrap((req, res) => {
 }));
 
 app.post('/api/players', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
   const { name, parent_name, parent_phone, age_group, notes } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'اسم اللاعب مطلوب' });
   const info = db.prepare(
@@ -126,6 +147,8 @@ app.get('/api/players/:id', asyncWrap((req, res) => {
   const today = todayCairo();
   const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id);
   if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
+  const squad = coachSquad(req);
+  if (squad && p.squad !== squad) return res.status(403).json({ error: 'مش من مجموعتك' });
   const subs = db.prepare('SELECT * FROM subscriptions WHERE player_id = ? ORDER BY start_date DESC, id DESC').all(p.id);
   const attendance = db.prepare('SELECT * FROM attendance WHERE player_id = ? ORDER BY date DESC LIMIT 30').all(p.id);
   const messages = db.prepare('SELECT * FROM messages WHERE player_id = ? ORDER BY id DESC LIMIT 30').all(p.id);
@@ -133,6 +156,7 @@ app.get('/api/players/:id', asyncWrap((req, res) => {
 }));
 
 app.put('/api/players/:id', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
   const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id);
   if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
   const { name, parent_name, parent_phone, age_group, notes, status } = req.body || {};
@@ -151,13 +175,17 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
 }));
 
 // ---------- subscriptions ----------
+app.get('/api/plans', asyncWrap((req, res) => res.json(PLANS)));
 app.post('/api/players/:id/subscriptions', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
   const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id);
   if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
   const today = todayCairo();
   const start = (req.body && req.body.start_date) || today;
-  const months = parseInt((req.body && req.body.months) || getSetting('sub_months'), 10) || 1;
-  const amount = Number((req.body && req.body.amount !== undefined ? req.body.amount : getSetting('sub_amount'))) || 0;
+  const planKey = req.body && req.body.plan;
+  const plan = PLANS[String(planKey)];
+  const months = plan ? plan.months : (parseInt((req.body && req.body.months) || getSetting('sub_months'), 10) || 1);
+  const amount = plan ? plan.amount : (Number((req.body && req.body.amount !== undefined ? req.body.amount : getSetting('sub_amount'))) || 0);
   const end = addMonths(start, months);
   const info = db.prepare(
     `INSERT INTO subscriptions (player_id, start_date, months, amount, end_date) VALUES (?,?,?,?,?)`
@@ -171,7 +199,10 @@ app.post('/api/players/:id/subscriptions', asyncWrap((req, res) => {
 app.get('/api/attendance', asyncWrap((req, res) => {
   const today = todayCairo();
   const date = req.query.date || today;
-  const players = db.prepare(`SELECT * FROM players WHERE status='active' ORDER BY name`).all();
+  const squad = coachSquad(req);
+  const players = squad
+    ? db.prepare(`SELECT * FROM players WHERE status='active' AND squad = ? ORDER BY name`).all(squad)
+    : db.prepare(`SELECT * FROM players WHERE status='active' ORDER BY name`).all();
   const rows = db.prepare('SELECT player_id, present FROM attendance WHERE date = ?').all(date);
   const byPlayer = {};
   rows.forEach((r) => (byPlayer[r.player_id] = r.present));
@@ -192,6 +223,15 @@ app.get('/api/attendance', asyncWrap((req, res) => {
 app.post('/api/attendance', asyncWrap((req, res) => {
   const { player_id, date, present } = req.body || {};
   if (!player_id || !date) return res.status(400).json({ error: 'player_id و date مطلوبين' });
+  const squad = coachSquad(req);
+  if (squad) {
+    const p = db.prepare('SELECT squad FROM players WHERE id = ?').get(player_id);
+    if (!p || p.squad !== squad) return res.status(403).json({ error: 'مش من مجموعتك' });
+  }
+  if (present === null) {
+    db.prepare('DELETE FROM attendance WHERE player_id = ? AND date = ?').run(player_id, date);
+    return res.json({ ok: true, cleared: true });
+  }
   db.prepare(
     `INSERT INTO attendance (player_id, date, present) VALUES (?,?,?)
      ON CONFLICT(player_id, date) DO UPDATE SET present = excluded.present`
@@ -201,6 +241,7 @@ app.post('/api/attendance', asyncWrap((req, res) => {
 
 // Close a training day: create absence drafts for everyone not marked present.
 app.post('/api/attendance/close', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
   const date = (req.body && req.body.date) || todayCairo();
   const created = automation.absenceDrafts(date);
   res.json({ date, absence_drafts_created: created });
@@ -208,6 +249,7 @@ app.post('/api/attendance/close', asyncWrap((req, res) => {
 
 // ---------- messages ----------
 app.get('/api/messages', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
   const status = req.query.status || 'draft';
   const rows = db.prepare(
     `SELECT m.*, p.name AS player_name, p.parent_name, p.parent_phone
@@ -218,6 +260,7 @@ app.get('/api/messages', asyncWrap((req, res) => {
 }));
 
 app.post('/api/messages/generate', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
   const r = automation.runDaily();
   res.json(r);
 }));
@@ -238,15 +281,16 @@ app.post('/api/messages/:id/dismiss', asyncWrap((req, res) => {
 
 // ---------- users ----------
 app.get('/api/users', asyncWrap((req, res) => {
-  res.json(db.prepare('SELECT id, username, role, created_at FROM users ORDER BY id').all());
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'للمدير فقط' });
+  res.json(db.prepare('SELECT id, username, role, squad, created_at FROM users ORDER BY id').all());
 }));
 app.post('/api/users', asyncWrap((req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'للمدير فقط' });
-  const { username, password, role } = req.body || {};
+  const { username, password, role, squad } = req.body || {};
   if (!username || !String(username).trim()) return res.status(400).json({ error: 'اسم المستخدم مطلوب' });
   if (!password || String(password).length < 6) return res.status(400).json({ error: 'كلمة السر لازم 6 حروف على الأقل' });
   try {
-    const id = auth.createUser(username, password, role === 'admin' ? 'admin' : 'staff');
+    const id = auth.createUser(username, password, ['admin','manager','coach','staff'].includes(role) ? role : 'staff', squad || null);
     res.status(201).json({ id });
   } catch (e) {
     res.status(400).json({ error: 'اسم المستخدم ده موجود قبل كده' });
@@ -265,17 +309,127 @@ app.post('/api/password', asyncWrap((req, res) => {
 
 // ---------- settings ----------
 app.get('/api/settings', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
   const out = {};
   Object.keys(DEFAULTS).forEach((k) => (out[k] = getSetting(k)));
   res.json(out);
 }));
 
 app.put('/api/settings', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
   const body = req.body || {};
   Object.keys(DEFAULTS).forEach((k) => {
     if (body[k] !== undefined) setSetting(k, typeof body[k] === 'string' ? body[k] : JSON.stringify(body[k]));
   });
   res.json({ ok: true });
+}));
+
+// ---------- expenses & finance (full roles) ----------
+app.get('/api/expenses', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const month = req.query.month; // YYYY-MM
+  const year = req.query.year;
+  let rows;
+  if (month) rows = db.prepare(`SELECT * FROM expenses WHERE date LIKE ? ORDER BY date DESC, id DESC`).all(month + '%');
+  else if (year) rows = db.prepare(`SELECT * FROM expenses WHERE date LIKE ? ORDER BY date DESC, id DESC`).all(year + '%');
+  else rows = db.prepare('SELECT * FROM expenses ORDER BY date DESC, id DESC LIMIT 200').all();
+  res.json(rows);
+}));
+app.post('/api/expenses', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const { title, category, amount, date } = req.body || {};
+  if (!title || !String(title).trim()) return res.status(400).json({ error: 'بيان المصروف مطلوب' });
+  const amt = Number(amount) || 0;
+  if (amt <= 0) return res.status(400).json({ error: 'المبلغ لازم يكون أكبر من صفر' });
+  const info = db.prepare('INSERT INTO expenses (title, category, amount, date) VALUES (?,?,?,?)')
+    .run(String(title).trim(), category || 'أخرى', amt, date || todayCairo());
+  res.status(201).json(db.prepare('SELECT * FROM expenses WHERE id=?').get(info.lastInsertRowid));
+}));
+app.delete('/api/expenses/:id', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  db.prepare('DELETE FROM expenses WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+}));
+app.get('/api/finance', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const today = todayCairo();
+  const monthStart = today.slice(0, 8) + '01';
+  const yearStart = today.slice(0, 4) + '-01-01';
+  const expMonth = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE date >= ?').get(monthStart).t;
+  const expYear = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE date >= ?').get(yearStart).t;
+  const revMonth = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM subscriptions WHERE start_date >= ?').get(monthStart).t;
+  const revYear = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM subscriptions WHERE start_date >= ?').get(yearStart).t;
+  res.json({
+    month: today.slice(0, 7), year: today.slice(0, 4),
+    expenses_month: expMonth, expenses_year: expYear,
+    revenue_month: revMonth, revenue_year: revYear,
+    net_month: revMonth - expMonth, net_year: revYear - expYear
+  });
+}));
+
+// ---------- staff + staff attendance ----------
+app.get('/api/staff', asyncWrap((req, res) => {
+  const today = todayCairo();
+  const date = req.query.date || today;
+  const rows = db.prepare('SELECT * FROM staff ORDER BY id').all();
+  const att = db.prepare('SELECT staff_id, status FROM staff_attendance WHERE date = ?').all(date);
+  const byStaff = {};
+  att.forEach((r) => (byStaff[r.staff_id] = r.status));
+  res.json({ date, staff: rows.map((m) => Object.assign({}, m, { status: byStaff[m.id] || null })) });
+}));
+app.post('/api/staff', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const { name, role, squad } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'الاسم مطلوب' });
+  const info = db.prepare('INSERT INTO staff (name, role, squad) VALUES (?,?,?)')
+    .run(String(name).trim(), role || 'مدرب', squad || null);
+  res.status(201).json(db.prepare('SELECT * FROM staff WHERE id=?').get(info.lastInsertRowid));
+}));
+app.put('/api/staff/:id', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const m = db.prepare('SELECT * FROM staff WHERE id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'غير موجود' });
+  const { name, role, squad } = req.body || {};
+  db.prepare('UPDATE staff SET name=?, role=?, squad=? WHERE id=?')
+    .run(name !== undefined ? name : m.name, role !== undefined ? role : m.role, squad !== undefined ? squad : m.squad, m.id);
+  res.json(db.prepare('SELECT * FROM staff WHERE id=?').get(m.id));
+}));
+app.delete('/api/staff/:id', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  db.prepare('DELETE FROM staff WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+}));
+app.post('/api/staff-attendance', asyncWrap((req, res) => {
+  const { staff_id, date, status } = req.body || {};
+  if (!staff_id || !date) return res.status(400).json({ error: 'staff_id و date مطلوبين' });
+  if (status === null) {
+    db.prepare('DELETE FROM staff_attendance WHERE staff_id = ? AND date = ?').run(staff_id, date);
+    return res.json({ ok: true, cleared: true });
+  }
+  if (!['present', 'absent', 'late'].includes(status)) return res.status(400).json({ error: 'الحالة: present أو absent أو late' });
+  db.prepare(
+    `INSERT INTO staff_attendance (staff_id, date, status) VALUES (?,?,?)
+     ON CONFLICT(staff_id, date) DO UPDATE SET status = excluded.status`
+  ).run(staff_id, date, status);
+  res.json({ ok: true });
+}));
+
+// ---------- coaches overview (full roles) ----------
+app.get('/api/coaches-overview', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const today = todayCairo();
+  const monthStart = today.slice(0, 8) + '01';
+  const coaches = db.prepare(`SELECT * FROM staff WHERE role LIKE '%مدرب%' OR role LIKE '%حراس%' ORDER BY id`).all();
+  res.json(coaches.map((c) => {
+    const players = c.squad ? db.prepare(`SELECT COUNT(*) AS n FROM players WHERE status='active' AND squad = ?`).get(c.squad).n : 0;
+    const att = c.squad ? db.prepare(
+      `SELECT COUNT(*) AS n FROM attendance a JOIN players p ON p.id = a.player_id WHERE p.squad = ? AND a.date >= ?`
+    ).get(c.squad, monthStart).n : 0;
+    const staffAtt = db.prepare(
+      `SELECT SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) AS present, SUM(CASE WHEN status='absent' THEN 1 ELSE 0 END) AS absent, SUM(CASE WHEN status='late' THEN 1 ELSE 0 END) AS late FROM staff_attendance WHERE staff_id = ? AND date >= ?`
+    ).get(c.id, monthStart);
+    return { id: c.id, name: c.name, role: c.role, squad: c.squad, players_count: players, attendance_records_month: att, present_month: staffAtt.present || 0, absent_month: staffAtt.absent || 0, late_month: staffAtt.late || 0 };
+  }));
 }));
 
 const PORT = process.env.PORT || 3000;
