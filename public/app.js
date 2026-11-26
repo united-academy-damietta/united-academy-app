@@ -423,6 +423,12 @@ async function renderSettings() {
         <button class="btn gray" id="logout-btn">تسجيل خروج</button>
       </div>
       <p class="note" style="margin-top:6px">إضافة المستخدمين متاحة لحساب المدير (admin) بس.</p>
+    </div>
+    <div class="card">
+      <h2 class="section" style="margin-top:0">تغيير كلمة السر بتاعتي</h2>
+      <label>كلمة السر الحالية</label><input id="pw-cur" type="password" />
+      <label>كلمة السر الجديدة (6 حروف على الأقل)</label><input id="pw-new" type="password" />
+      <button class="btn secondary" id="pw-save">تغيير كلمة السر</button>
     </div>`;
   async function loadUsers() {
     try {
@@ -440,6 +446,15 @@ async function renderSettings() {
       }});
       toast('اتضاف المستخدم ✅');
       loadUsers();
+    } catch (e) { toast(e.message); }
+  };
+  document.getElementById('pw-save').onclick = async () => {
+    try {
+      await api('/password', { body: {
+        current_password: document.getElementById('pw-cur').value,
+        new_password: document.getElementById('pw-new').value
+      }});
+      toast('اتغيرت كلمة السر ✅');
     } catch (e) { toast(e.message); }
   };
   document.getElementById('logout-btn').onclick = async () => {
