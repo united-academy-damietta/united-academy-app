@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>يونايتد أكاديمي - الإدارة</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header id="topbar">
+    <h1 id="page-title">يونايتد أكاديمي</h1>
+  </header>
+  <main id="app"></main>
+  <nav id="bottomnav">
+    <a href="#/" data-route="/">🏠<span>الرئيسية</span></a>
+    <a href="#/players" data-route="/players">⚽<span>اللاعبون</span></a>
+    <a href="#/attendance" data-route="/attendance">✅<span>الحضور</span></a>
+    <a href="#/messages" data-route="/messages">💬<span>الرسائل</span></a>
+    <a href="#/settings" data-route="/settings">⚙️<span>الإعدادات</span></a>
+  </nav>
+  <div id="modal-backdrop" class="hidden">
+    <div id="modal"></div>
+  </div>
+  <div id="toast" class="hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
