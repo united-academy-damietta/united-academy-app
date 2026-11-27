@@ -76,6 +76,23 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS subscription_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_key TEXT UNIQUE NOT NULL,
+  label TEXT NOT NULL,
+  amount REAL NOT NULL DEFAULT 0,
+  variable INTEGER NOT NULL DEFAULT 0,
+  sort INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  item_id INTEGER REFERENCES subscription_items(id),
+  label TEXT NOT NULL,
+  amount REAL NOT NULL DEFAULT 0,
+  date TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS contact_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
@@ -131,6 +148,19 @@ try { db.exec('ALTER TABLE players ADD COLUMN squad TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE players ADD COLUMN birth_date TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE staff ADD COLUMN user_id INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE staff_attendance ADD COLUMN late_minutes INTEGER NOT NULL DEFAULT 0'); } catch (e) {}
+
+// بنود الاشتراك الإضافية (الأسعار بتتعدل من الإعدادات من غير كود)
+const seedItems = db.prepare(
+  'INSERT OR IGNORE INTO subscription_items (item_key, label, amount, variable, sort) VALUES (?,?,?,?,?)'
+);
+[
+  ['kit', 'اشتراك الزي', 490, 0, 1],
+  ['winter', 'اشتراك طقم شتوي', 550, 0, 2],
+  ['league', 'اشتراك دوري', 1500, 0, 3],
+  ['trip', 'اشتراك سفرية', 0, 1, 4],
+  ['fitness', 'اشتراك فتنس', 400, 0, 5],
+  ['private', 'اشتراك برايفت', 2000, 0, 6]
+].forEach((r) => seedItems.run(...r));
 
 const PLANS = {
   '1': { months: 1, label: 'شهري', amount: 700 },

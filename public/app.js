@@ -430,6 +430,10 @@ async function renderPlayer(id) {
     ${p.subscriptions.length ? p.subscriptions.map((s) => `
       <div class="card"><div class="kv"><span class="k">${s.start_date} ← ${s.end_date}</span><span>${s.amount !== null && s.amount !== undefined ? `${s.amount} جنيه (${s.months} شهر)` : 'اشتراك ' + s.months + ' شهر'}</span></div></div>
     `).join('') : '<div class="empty">لا يوجد</div>'}`}
+    ${hideSub ? '' : `<h2 class="section">مدفوعات البنود</h2>
+    ${(p.payments && p.payments.length) ? p.payments.map((y) => `
+      <div class="card"><div class="kv"><span class="k">${esc(y.label)}</span><span>${y.amount} جنيه - ${y.date}</span></div></div>
+    `).join('') : '<div class="empty">لا يوجد</div>'}`}
     <h2 class="section">آخر الحضور</h2>
     ${p.attendance.length ? p.attendance.map((a) => `
       <div class="card"><div class="kv"><span class="k">${a.date}</span><span>${a.present ? '✅ حاضر' : '❌ غائب'}</span></div></div>
@@ -526,12 +530,19 @@ async function renderPlayer(id) {
   const renewBtn = document.getElementById('renew-btn');
   if (renewBtn) renewBtn.onclick = async () => {
     const plans = await api('/plans');
+    const items = await api('/subscription-items');
+    window._subItems = items;
     const planOpts = Object.entries(plans).map(([k, v]) =>
       `<option value="${k}">${v.label} - ${v.amount} جنيه</option>`).join('');
+    const itemsHtml = items.map((it) => `
+      <div class="kv" style="align-items:center">
+        <label style="margin:0;display:flex;align-items:center;gap:6px"><input type="checkbox" class="s-item" data-id="${it.id}" /> ${esc(it.label)}</label>
+        <span><input type="number" min="0" class="s-item-amt" data-id="${it.id}" value="${it.amount || ''}" placeholder="المبلغ" style="width:100px" /> جنيه</span>
+      </div>`).join('');
     openModal(`
       <h3>${p.subscription ? 'تجديد اشتراك' : 'اشتراك جديد'} - ${esc(p.name)}</h3>
       <label>تاريخ البداية</label><input id="s-start" type="date" value="${todayLocal()}" />
-      <label>خطة الاشتراك</label>
+      <label>خطة اشتراك الأكاديمية</label>
       <select id="s-plan">
         ${planOpts}
         <option value="custom">مخصص</option>
@@ -540,6 +551,8 @@ async function renderPlayer(id) {
         <label>المدة (شهور)</label><input id="s-months" type="number" min="1" value="1" />
         <label>المبلغ (جنيه)</label><input id="s-amount" type="number" min="0" value="700" />
       </div>
+      <label style="margin-top:6px;font-weight:bold">بنود إضافية (اختياري)</label>
+      ${itemsHtml}
       <p class="note">هيتجهز رسالة تأكيد واتساب كمسودة في شاشة الرسائل - مفيش إرسال تلقائي.</p>
       <div class="btn-row">
         <button class="btn gray" onclick="closeModal()">إلغاء</button>
@@ -557,6 +570,7 @@ async function renderPlayer(id) {
       } else {
         body.plan = plan;
       }
+      body.items = readItems('s-item', 's-item-amt').map((c) => ({ item_id: c.item_id, amount: c.amount }));
       await api(`/players/${id}/subscriptions`, { body });
       closeModal();
       toast('اتسجل الاشتراك ✅ ورسالة التأكيد في الرسائل');
@@ -893,6 +907,12 @@ async function renderSettings() {
     </div>
     <button class="btn block" id="st-save">حفظ الإعدادات</button>
     <div class="card" style="margin-top:10px">
+      <h2 class="section" style="margin-top:0">أسعار بنود الاشتراك</h2>
+      <p class="note">السعر ده بيتكتب تلقائي وقت التسجيل، ومريم/الإدارة تقدر تعدله للاعب معين من خانته. «اشتراك سفرية» سعره بيتكتب كل مرة.</p>
+      <div id="items-prices"></div>
+      <button class="btn block" id="st-items-save" style="margin-top:8px">حفظ أسعار البنود</button>
+    </div>
+    <div class="card" style="margin-top:10px">
       <h2 class="section" style="margin-top:0">المستخدمون</h2>
       <div id="users-list"></div>
       <label>اسم مستخدم جديد</label><input id="u-name" />
@@ -954,6 +974,25 @@ async function renderSettings() {
   document.getElementById('logout-btn').onclick = async () => {
     await api('/logout', {});
     renderLogin();
+  };
+  async function loadItemPrices() {
+    try {
+      const items = await api('/subscription-items');
+      document.getElementById('items-prices').innerHTML = items.map((it) => `
+        <div class="kv" style="align-items:center"><span class="k">${esc(it.label)}${it.variable ? ' (متغير كل مرة)' : ''}</span>
+        <span><input type="number" min="0" data-item-amt="${it.id}" value="${it.amount}" style="width:110px" /> جنيه</span></div>`).join('');
+    } catch (e) { document.getElementById('items-prices').innerHTML = '<div class="empty">مش متاحة</div>'; }
+  }
+  await loadItemPrices();
+  document.getElementById('st-items-save').onclick = async () => {
+    try {
+      const inputs = [...document.querySelectorAll('[data-item-amt]')];
+      for (const inp of inputs) {
+        await api('/subscription-items/' + inp.dataset.itemAmt, { method: 'PUT', body: { amount: inp.value } });
+      }
+      toast('اتحفظت أسعار البنود ✅');
+      loadItemPrices();
+    } catch (e) { toast(e.message); }
   };
   document.getElementById('st-save').onclick = async () => {
     const training = [...document.querySelectorAll('input[data-day]:checked')].map((c) => +c.dataset.day);
@@ -1231,8 +1270,15 @@ async function renderSubscribe() {
     return;
   }
   const plans = await api('/plans');
+  const items = await api('/subscription-items');
+  window._subItems = items;
   const planOpts = Object.entries(plans).map(([k, v]) =>
     `<option value="${k}">${v.label} - ${v.amount} جنيه</option>`).join('');
+  const itemsHtml = items.map((it) => `
+    <div class="kv" style="align-items:center">
+      <label style="margin:0;display:flex;align-items:center;gap:6px"><input type="checkbox" class="r-item" data-id="${it.id}" /> ${esc(it.label)}</label>
+      <span><input type="number" min="0" class="r-item-amt" data-id="${it.id}" value="${it.amount || ''}" placeholder="المبلغ" style="width:100px" /> جنيه</span>
+    </div>`).join('');
   app.innerHTML = `
     <div class="card">
       <h2 class="section" style="margin-top:0">بيانات اللاعب الجديد</h2>
@@ -1248,31 +1294,47 @@ async function renderSubscribe() {
     </div>
     <div class="card">
       <h2 class="section" style="margin-top:0">الاشتراك والدفع</h2>
-      <label>تاريخ البداية</label><input id="r-start" type="date" value="${todayLocal()}" />
-      <label>خطة الاشتراك</label>
-      <select id="r-plan">${planOpts}<option value="custom">مخصص</option></select>
-      <div id="r-custom" class="hidden">
-        <label>المدة (شهور)</label><input id="r-months" type="number" min="1" value="1" />
-        <label>المبلغ (جنيه)</label><input id="r-amount" type="number" min="0" value="700" />
+      <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="r-academy" checked /> اشتراك الأكاديمية</label>
+      <div id="r-academy-box">
+        <label>تاريخ البداية</label><input id="r-start" type="date" value="${todayLocal()}" />
+        <label>خطة الاشتراك</label>
+        <select id="r-plan">${planOpts}<option value="custom">مخصص</option></select>
+        <div id="r-custom" class="hidden">
+          <label>المدة (شهور)</label><input id="r-months" type="number" min="1" value="1" />
+          <label>المبلغ (جنيه)</label><input id="r-amount" type="number" min="0" value="700" />
+        </div>
       </div>
+      <h2 class="section">بنود إضافية (اختياري)</h2>
+      ${itemsHtml}
+      <p class="note">أي مبلغ يتغير لاعب للاعب يتعدل من الخانة اللي جنبه قبل الحفظ، والسعر الأساسي يتغير للكل من الإعدادات.</p>
       <div id="r-summary" class="note" style="font-weight:bold"></div>
       <p class="note">بعد الحفظ هتتجهز رسالة تأكيد واتساب كمسودة في شاشة الرسائل - مفيش إرسال تلقائي.</p>
       <button class="btn" id="r-save" style="width:100%">💾 تسجيل اللاعب والاشتراك</button>
     </div>
     <div id="r-done"></div>`;
   const upd = () => {
+    const academy = document.getElementById('r-academy').checked;
+    document.getElementById('r-academy-box').classList.toggle('hidden', !academy);
     const plan = document.getElementById('r-plan').value;
     document.getElementById('r-custom').classList.toggle('hidden', plan !== 'custom');
-    const months = plan === 'custom' ? (parseInt(document.getElementById('r-months').value, 10) || 1) : plans[plan].months;
-    const amount = plan === 'custom' ? (Number(document.getElementById('r-amount').value) || 0) : plans[plan].amount;
-    const start = document.getElementById('r-start').value;
-    document.getElementById('r-summary').textContent = start
-      ? `الاشتراك: ${months} شهر من ${start} - المبلغ: ${amount} جنيه` : '';
+    const parts = [];
+    if (academy) {
+      const months = plan === 'custom' ? (parseInt(document.getElementById('r-months').value, 10) || 1) : plans[plan].months;
+      const amount = plan === 'custom' ? (Number(document.getElementById('r-amount').value) || 0) : plans[plan].amount;
+      const start = document.getElementById('r-start').value;
+      parts.push(`الأكاديمية: ${months} شهر من ${start} - ${amount} جنيه`);
+    }
+    const chosen = readItems('r-item', 'r-item-amt');
+    if (chosen.length) parts.push('بنود: ' + chosen.map((c) => `${c.label} ${c.amount}ج`).join(' + '));
+    const total = chosen.reduce((t, c) => t + c.amount, 0);
+    if (total) parts.push(`إجمالي البنود: ${total} جنيه`);
+    document.getElementById('r-summary').textContent = parts.join(' | ');
   };
-  ['r-plan', 'r-months', 'r-amount', 'r-start'].forEach((id) => {
+  ['r-plan', 'r-months', 'r-amount', 'r-start', 'r-academy'].forEach((id) => {
     document.getElementById(id).oninput = upd;
     document.getElementById(id).onchange = upd;
   });
+  document.querySelectorAll('.r-item, .r-item-amt').forEach((el) => { el.oninput = upd; el.onchange = upd; });
   upd();
   document.getElementById('r-save').onclick = async () => {
     try {
@@ -1287,26 +1349,45 @@ async function renderSubscribe() {
         notes: document.getElementById('r-notes').value,
         start_date: document.getElementById('r-start').value
       };
-      if (plan === 'custom') {
-        body.months = document.getElementById('r-months').value;
-        body.amount = document.getElementById('r-amount').value;
-      } else {
-        body.plan = plan;
+      if (document.getElementById('r-academy').checked) {
+        if (plan === 'custom') {
+          body.months = document.getElementById('r-months').value;
+          body.amount = document.getElementById('r-amount').value;
+        } else {
+          body.plan = plan;
+        }
       }
+      body.items = readItems('r-item', 'r-item-amt').map((c) => ({ item_id: c.item_id, amount: c.amount }));
       const out = await api('/subscriptions/register', { body });
+      const payLines = (out.payments || []).map((y) => `<div class="sub">${esc(y.label)}: ${y.amount} جنيه</div>`).join('');
       document.getElementById('r-done').innerHTML = `
         <div class="card" style="border-right:4px solid #1a7a3c">
           <div class="name">✅ اتسجل ${esc(out.player.name)}</div>
-          <div class="sub">اشتراك ${out.subscription.months} شهر من ${out.subscription.start_date} لحد ${out.subscription.end_date} - ${out.subscription.amount} جنيه</div>
-          <div class="sub">رسالة التأكيد جهزة كمسودة في شاشة الرسائل</div>
+          ${out.subscription ? `<div class="sub">اشتراك الأكاديمية: ${out.subscription.months} شهر من ${out.subscription.start_date} لحد ${out.subscription.end_date} - ${out.subscription.amount} جنيه</div>` : ''}
+          ${payLines}
+          ${out.subscription ? '<div class="sub">رسالة التأكيد جهزة كمسودة في شاشة الرسائل</div>' : ''}
           <div class="btn-row" style="margin-top:8px">
-            ${out.wa_link ? `<a class="btn" href="${out.wa_link}" target="_blank" rel="noopener">✈️ ابعت التأكيد في واتساب</a>` : '<div class="sub">مفيش رقم واتساب لولي الأمر - ضيفه من ملف اللاعب عشان يظهر زرار الإرسال</div>'}
+            ${out.wa_link ? `<a class="btn" href="${out.wa_link}" target="_blank" rel="noopener">✈️ ابعت التأكيد في واتساب</a>` : (out.subscription ? '<div class="sub">مفيش رقم واتساب لولي الأمر - ضيفه من ملف اللاعب عشان يظهر زرار الإرسال</div>' : '')}
             <button class="btn gray" onclick="location.hash='#/player/${out.player.id}'">فتح ملف اللاعب</button>
           </div>
         </div>`;
       toast('اتسجل اللاعب والاشتراك ✅');
     } catch (e) { toast(e.message); }
   };
+}
+
+// يقرأ البنود المختارة ومبالغها من أي فورم فيه تشيكبوكسات البنود
+function readItems(checkClass, amtClass) {
+  const items = (window._subItems || []);
+  const out = [];
+  document.querySelectorAll('.' + checkClass + ':checked').forEach((cb) => {
+    const id = +cb.dataset.id;
+    const amtEl = document.querySelector('.' + amtClass + '[data-id="' + id + '"]');
+    const amount = amtEl && amtEl.value !== '' ? (Number(amtEl.value) || 0) : null;
+    const it = items.find((x) => x.id === id);
+    out.push({ item_id: id, label: it ? it.label : '', amount: amount !== null ? amount : (it ? it.amount : 0) });
+  });
+  return out;
 }
 
 const routes = {

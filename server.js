@@ -95,6 +95,11 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
   const collected = db
     .prepare(`SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM subscriptions WHERE start_date >= ?`)
     .get(monthStart);
+  const collectedItems = db
+    .prepare(`SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM payments WHERE date >= ?`)
+    .get(monthStart);
+  collected.total += collectedItems.total;
+  collected.n += collectedItems.n;
   const att = squad
     ? db.prepare(`SELECT COUNT(*) AS present FROM attendance a JOIN players p ON p.id=a.player_id WHERE a.date = ? AND a.present = 1 AND p.squad = ?`).get(today, squad)
     : db.prepare(`SELECT COUNT(*) AS present FROM attendance WHERE date = ? AND present = 1`).get(today);
@@ -269,8 +274,10 @@ app.get('/api/players/:id', asyncWrap((req, res) => {
   const contact_log = db.prepare('SELECT * FROM contact_log WHERE player_id = ? ORDER BY id DESC LIMIT 50').all(p.id);
   const evaluations = db.prepare('SELECT * FROM evaluations WHERE player_id = ? ORDER BY month DESC LIMIT 12').all(p.id);
   const out = Object.assign(decoratePlayer(p, today), { subscriptions: subs, attendance, messages, contact_log, evaluations });
-  if (isCoach) { // المدرب ميشوفش حالة الاشتراك ولا الأيام الفاضلة ولا سجل الاشتراكات ولا مسودات التجديد
+  if (isCoach) { // المدرب ميشوفش حالة الاشتراك ولا الأيام الفاضلة ولا سجل الاشتراكات ولا مسودات التجديد ولا المدفوعات
     out.sub_state = null; out.days_left = null; out.subscription = null; out.subscriptions = []; out.messages = [];
+  } else {
+    out.payments = db.prepare('SELECT * FROM payments WHERE player_id = ? ORDER BY id DESC LIMIT 30').all(p.id);
   }
   res.json(out);
 }));
@@ -345,6 +352,41 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
 
 // ---------- subscriptions ----------
 app.get('/api/plans', asyncWrap((req, res) => res.json(PLANS)));
+
+// بنود الاشتراك (الزي/الدوري/السفرية...) - إدارة بس، المدرب ميشوفش فلوس
+app.get('/api/subscription-items', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  res.json(db.prepare('SELECT * FROM subscription_items ORDER BY sort, id').all());
+}));
+app.put('/api/subscription-items/:id', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const it = db.prepare('SELECT * FROM subscription_items WHERE id=?').get(req.params.id);
+  if (!it) return res.status(404).json({ error: 'البند غير موجود' });
+  const label = req.body && req.body.label !== undefined ? String(req.body.label).trim().slice(0, 60) : it.label;
+  const amount = req.body && req.body.amount !== undefined ? (Number(req.body.amount) || 0) : it.amount;
+  db.prepare('UPDATE subscription_items SET label=?, amount=? WHERE id=?').run(label || it.label, amount, it.id);
+  res.json(db.prepare('SELECT * FROM subscription_items WHERE id=?').get(it.id));
+}));
+
+// يسجل مدفوعات بنود الاشتراك للاعب ويرجع الصفوف المسجلة
+function recordItemPayments(playerId, items, fallbackDate) {
+  const created = [];
+  if (!Array.isArray(items)) return created;
+  const getItem = db.prepare('SELECT * FROM subscription_items WHERE id=?');
+  const ins = db.prepare('INSERT INTO payments (player_id, item_id, label, amount, date) VALUES (?,?,?,?,?)');
+  for (const raw of items) {
+    const it = getItem.get(raw && raw.item_id);
+    if (!it) continue;
+    // المبلغ الافتراضي من الكتالوج، والإدارة تقدر تعدله وقت التسجيل (مخصص لكل لاعب)
+    const amount = raw.amount !== undefined && raw.amount !== null && raw.amount !== ''
+      ? (Number(raw.amount) || 0) : it.amount;
+    if (amount <= 0) continue; // بند من غير مبلغ متتسجلش
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String((raw && raw.date) || '')) ? raw.date : fallbackDate;
+    const info = ins.run(playerId, it.id, it.label, amount, date);
+    created.push(db.prepare('SELECT * FROM payments WHERE id=?').get(info.lastInsertRowid));
+  }
+  return created;
+}
 app.post('/api/players/:id/subscriptions', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
   const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id);
@@ -361,7 +403,8 @@ app.post('/api/players/:id/subscriptions', asyncWrap((req, res) => {
   ).run(p.id, start, months, amount, end);
   const sub = db.prepare('SELECT * FROM subscriptions WHERE id=?').get(info.lastInsertRowid);
   automation.confirmationDraft(p.id, sub); // draft only - human sends it
-  res.status(201).json(sub);
+  const payments = recordItemPayments(p.id, req.body && req.body.items, start);
+  res.status(201).json(Object.assign({}, sub, { payments }));
 }));
 
 // New-subscriber registration: creates the player AND the first paid subscription in one step.
@@ -379,18 +422,22 @@ app.post('/api/subscriptions/register', asyncWrap((req, res) => {
   const today = todayCairo();
   const start = /^\d{4}-\d{2}-\d{2}$/.test(String(b.start_date || '')) ? b.start_date : today;
   const plan = PLANS[String(b.plan)];
-  const months = plan ? plan.months : (parseInt(b.months, 10) || 1);
-  const amount = plan ? plan.amount : (Number(b.amount) || 0);
-  const end = addMonths(start, months);
-  const sinfo = db.prepare(
-    `INSERT INTO subscriptions (player_id, start_date, months, amount, end_date) VALUES (?,?,?,?,?)`
-  ).run(pid, start, months, amount, end);
-  const sub = db.prepare('SELECT * FROM subscriptions WHERE id=?').get(sinfo.lastInsertRowid);
-  automation.confirmationDraft(pid, sub); // draft only - human sends it
+  let sub = null;
+  if (plan || b.months !== undefined || b.amount !== undefined) { // اشتراك الأكاديمية اختياري لو فيه بنود تانية بس
+    const months = plan ? plan.months : (parseInt(b.months, 10) || 1);
+    const amount = plan ? plan.amount : (Number(b.amount) || 0);
+    const end = addMonths(start, months);
+    const sinfo = db.prepare(
+      `INSERT INTO subscriptions (player_id, start_date, months, amount, end_date) VALUES (?,?,?,?,?)`
+    ).run(pid, start, months, amount, end);
+    sub = db.prepare('SELECT * FROM subscriptions WHERE id=?').get(sinfo.lastInsertRowid);
+    automation.confirmationDraft(pid, sub); // draft only - human sends it
+  }
+  const payments = recordItemPayments(pid, b.items, start);
   const player = db.prepare('SELECT * FROM players WHERE id=?').get(pid);
-  const draft = db.prepare('SELECT * FROM messages WHERE dedupe_key=?').get(`pay:${pid}:${sub.id}`);
+  const draft = sub ? db.prepare('SELECT * FROM messages WHERE dedupe_key=?').get(`pay:${pid}:${sub.id}`) : null;
   const wa_link = draft ? automation.waLink(player, draft.body) : null;
-  res.status(201).json({ player: decoratePlayer(player, today), subscription: sub, wa_link });
+  res.status(201).json({ player: decoratePlayer(player, today), subscription: sub, payments, wa_link });
 }));
 
 // ---------- attendance ----------
@@ -706,8 +753,10 @@ app.get('/api/finance', asyncWrap((req, res) => {
   const yearStart = today.slice(0, 4) + '-01-01';
   const expMonth = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE date >= ?').get(monthStart).t;
   const expYear = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE date >= ?').get(yearStart).t;
-  const revMonth = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM subscriptions WHERE start_date >= ?').get(monthStart).t;
-  const revYear = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM subscriptions WHERE start_date >= ?').get(yearStart).t;
+  const revMonth = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM subscriptions WHERE start_date >= ?').get(monthStart).t
+    + db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE date >= ?').get(monthStart).t;
+  const revYear = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM subscriptions WHERE start_date >= ?').get(yearStart).t
+    + db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE date >= ?').get(yearStart).t;
   const isNagar = req.user.username === 'anagar'; // صافي السنة/الشهر لأحمد النجار (المدير الفني) بس
   res.json({
     month: today.slice(0, 7), year: today.slice(0, 4),
