@@ -732,6 +732,7 @@ async function renderAttendance() {
   app.innerHTML = `
     <div class="tabs">
       <button data-tab="day" class="active">تسجيل يوم</button>
+      <button data-tab="pitch">الملعب دلوقتي</button>
       <button data-tab="month">ملخص الشهر</button>
     </div>
     <div id="att-day-wrap">
@@ -741,16 +742,19 @@ async function renderAttendance() {
     <div id="att-month-wrap" class="hidden">
       <input type="month" id="att-monthpick" value="${today.slice(0, 7)}" />
       <div id="month-body"></div>
-    </div>`;
+    </div>
+    <div id="att-pitch-wrap" class="hidden"></div>`;
 
   // ---- tab switching ----
   document.querySelectorAll('.tabs button').forEach((b) => {
     b.onclick = () => {
       document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x === b));
-      const monthMode = b.dataset.tab === 'month';
-      document.getElementById('att-day-wrap').classList.toggle('hidden', monthMode);
-      document.getElementById('att-month-wrap').classList.toggle('hidden', !monthMode);
-      if (monthMode) loadMonth(document.getElementById('att-monthpick').value);
+      const tab = b.dataset.tab;
+      document.getElementById('att-day-wrap').classList.toggle('hidden', tab !== 'day');
+      document.getElementById('att-month-wrap').classList.toggle('hidden', tab !== 'month');
+      document.getElementById('att-pitch-wrap').classList.toggle('hidden', tab !== 'pitch');
+      if (tab === 'month') loadMonth(document.getElementById('att-monthpick').value);
+      if (tab === 'pitch') renderTrainingDay(document.getElementById('att-pitch-wrap'));
     };
   });
 
@@ -768,7 +772,7 @@ async function renderAttendance() {
     body.insertAdjacentHTML('beforeend', `
       <input id="att-search" placeholder="🔍 ابحث باسم اللاعب..." style="margin-bottom:8px" />
       <div id="att-rows"></div>
-      <div class="btn-row">
+      <div class="btn-row sticky-save">
         <button class="btn block" id="save-day">💾 حفظ حضور اليوم</button>
       </div>
       <p class="note" id="att-count" style="margin-top:6px"></p>
@@ -1332,13 +1336,13 @@ async function renderStaff() {
   document.getElementById('st-date').onchange = (e) => load(e.target.value);
 }
 
-async function renderTrainingDay() {
-  pageTitle.textContent = 'يوم التدريب';
+async function renderTrainingDay(container) {
+  if (!container) pageTitle.textContent = 'يوم التدريب';
   const [d, m] = await Promise.all([api('/dashboard'), api('/attendance/month')]);
   const unmarked = d.players_total - d.present_today - d.absent_today;
   const dropoutsBySquad = {};
   (m.dropouts || []).forEach((p) => { const k = p.squad || ''; dropoutsBySquad[k] = (dropoutsBySquad[k] || 0) + 1; });
-  app.innerHTML = `
+  (container || app).innerHTML = `
     <h2 class="section">يوم التدريب - اللي بيحصل في الملعب دلوقتي${d.is_training_day ? '' : ' <span class="badge grace">مفيش تدريب النهاردة</span>'}</h2>
     <div class="grid">
       <div class="card stat"><div class="num">${d.present_today}</div><div class="lbl">حاضر في الملعب دلوقتي ✅</div></div>
@@ -1545,7 +1549,6 @@ async function renderMore() {
   const full = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
   const links = [];
   if (full) {
-    links.push(['#/training', 'clip', 'يوم التدريب']);
     links.push(['#/messages', 'chat', 'الرسائل']);
     links.push(['#/expenses', 'cash', 'المصاريف']);
   }
@@ -1558,7 +1561,7 @@ async function renderMore() {
 }
 const routes = {
   '/': renderDashboard,
-  '/training': renderTrainingDay,
+  '/training': async () => { location.hash = '#/attendance'; },
   '/players': renderPlayers,
   '/attendance': renderAttendance,
   '/messages': renderMessages,
