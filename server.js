@@ -621,7 +621,14 @@ app.get('/api/attendance/month', asyncWrap((req, res) => {
     month,
     training_days: days,
     players: perPlayer,
-    absentees: perPlayer.filter((p) => p.absent_days > 0).sort((a, b) => b.absent_days - a.absent_days || a.name.localeCompare(b.name, 'ar')),
+    absentees: perPlayer
+      // بس اللي غايب أكتر من أسبوعين (آخر حضور ليه من 14 يوم أو أكتر) - مش أي غياب في الشهر
+      .filter((p) => {
+        const lp = lastRows.find((r) => r.id === p.id);
+        return lp && diffDays(lp.last_present, today) >= 14;
+      })
+      .map((p) => ({ ...p, since_days: diffDays(lastRows.find((r) => r.id === p.id).last_present, today) }))
+      .sort((a, b) => b.since_days - a.since_days || b.absent_days - a.absent_days || a.name.localeCompare(b.name, 'ar')),
     top_attendees: perPlayer.filter((p) => p.present_days > 0).sort((a, b) => b.present_days - a.present_days || a.name.localeCompare(b.name, 'ar')).slice(0, 5),
     dropout_month: dropoutMonth,
     dropout_year: dropoutYear,

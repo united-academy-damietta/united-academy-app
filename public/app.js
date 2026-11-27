@@ -662,11 +662,11 @@ function topAttendeeRows(top) {
 }
 
 function absenteeRows(absentees) {
-  if (!absentees.length) return '<div class="empty">مفيش غياب مسجل الشهر ده 👌</div>';
+  if (!absentees.length) return '<div class="empty">مفيش لاعبين غايبين أكتر من أسبوعين 👌</div>';
   return absentees.map((p) => `
     <div class="list-item" style="cursor:default">
       <div class="grow"><div class="name">${esc(p.name)}</div></div>
-      <span class="badge expired">غاب ${p.absent_days} ${p.absent_days === 1 ? 'يوم' : 'أيام'}</span>
+      <span class="badge expired">${p.since_days !== undefined ? 'آخر حضور من ' + p.since_days + ' يوم' : 'غاب ' + p.absent_days + ' ' + (p.absent_days === 1 ? 'يوم' : 'أيام')}</span>
     </div>`).join('');
 }
 
