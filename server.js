@@ -112,7 +112,7 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
     ).all();
     lastRows.forEach((r) => {
       const since = diffDays(r.last_present, today);
-      if (since >= 14 && since <= 365) {
+      if (since >= 14 && since <= 90) { // المنقطع: غايب من أسبوعين لـ 3 شهور
         dropoutYear++;
         if (since <= 30) dropoutMonth++;
       }
@@ -481,7 +481,7 @@ app.get('/api/attendance/month', asyncWrap((req, res) => {
     return { id: p.id, name: p.name, present_days: c.present_days, absent_days: c.absent_days };
   });
   // Dropouts: active players whose last recorded presence is >= 14 days ago.
-  // "month" = last presence 14-30 days ago; "year" = 14-365 days ago (includes month).
+  // "month" = last presence 14-30 days ago; "year" (the headline count) = 14-90 days (3 months), includes month.
   const lastRows = db.prepare(
     `SELECT p.id, MAX(a.date) AS last_present FROM players p
      JOIN attendance a ON a.player_id = p.id AND a.present = 1
@@ -492,7 +492,7 @@ app.get('/api/attendance/month', asyncWrap((req, res) => {
   const dropoutDetail = [];
   lastRows.forEach((r) => {
     const since = diffDays(r.last_present, today);
-    if (since >= 14 && since <= 365) {
+    if (since >= 14 && since <= 90) { // المنقطع: غايب من أسبوعين لـ 3 شهور
       dropoutYear++;
       if (since <= 30) dropoutMonth++;
       const info = playerInfo[r.id] || {};

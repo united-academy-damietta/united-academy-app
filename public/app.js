@@ -215,7 +215,7 @@ async function renderDashboard() {
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
       <div class="card stat"><div class="num">${d.collected_month}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
-      <div class="card stat"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال السنة (الشهر ده: ${d.dropout_month})</div></div>
+      <div class="card stat"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال 3 شهور (الشهر ده: ${d.dropout_month})</div></div>
     </div>
     <div id="coaches-box"></div>
     <h2 class="section">تجديدات مستنية (خلال 7 أيام أو متأخرة)</h2>
@@ -617,7 +617,7 @@ function dropoutBox(m) {
   return `
     <div class="grid">
       <div class="card stat"><div class="num">${m.dropout_month}</div><div class="lbl">لاعب انقطع خلال الشهر</div></div>
-      <div class="card stat"><div class="num">${m.dropout_year}</div><div class="lbl">لاعب انقطع خلال السنة</div></div>
+      <div class="card stat"><div class="num">${m.dropout_year}</div><div class="lbl">لاعب انقطع خلال 3 شهور</div></div>
     </div>
     <p class="note">المنقطع = لاعب ماعندوش حضور مسجل من أسبوعين أو أكتر.</p>`;
 }
@@ -1163,7 +1163,7 @@ async function renderTrainingDay() {
       <div class="card stat"><div class="num">${d.present_today}</div><div class="lbl">حاضر في الملعب دلوقتي ✅</div></div>
       <div class="card stat"><div class="num">${d.absent_today}</div><div class="lbl">غايب ❌</div></div>
       <div class="card stat"><div class="num">${unmarked}</div><div class="lbl">لسه ما اتسجلش</div></div>
-      <div class="card stat"><div class="num">${m.dropout_year}</div><div class="lbl">منقطع (غايب أسبوعين+)</div></div>
+      <div class="card stat"><div class="num">${m.dropout_year}</div><div class="lbl">منقطع خلال 3 شهور (غايب أسبوعين+)</div></div>
     </div>
     <h2 class="section">حسب المجموعة</h2>
     ${d.squad_attendance.map((s) => `
