@@ -1507,6 +1507,15 @@ async function renderSubscribe() {
       </div>`).join('') : '<div class="empty">مفيش لاعبين هنا</div>'}
     </div>`;
   app.innerHTML = `
+    ${isViewer ? '' : `
+    <div class="card" id="reg-jump" style="background:var(--brand);color:#fff;cursor:pointer;display:flex;align-items:center;gap:12px">
+      <span style="width:44px;height:44px;border-radius:50%;background:#fff;color:var(--brand);display:flex;align-items:center;justify-content:center;flex:none">${SOCIAL_ICONS.userPlus}</span>
+      <div style="flex:1">
+        <div style="font-weight:800">إضافة لاعب جديد</div>
+        <div style="font-size:13px;opacity:.92">تسجيل لاعب وبدء اشتراك جديد</div>
+      </div>
+      <span style="font-size:20px" aria-hidden="true">←</span>
+    </div>`}
     <div class="grid">
       ${ovCard('m1', overview.m1.length, 'اشتراك شهري')}
       ${ovCard('m3', overview.m3.length, 'اشتراك 3 شهور')}
@@ -1522,7 +1531,7 @@ async function renderSubscribe() {
     ${ovList('mustaqbal', overview.mustaqbal, true)}
     ${ovList('kit', overview.kit, false)}
     ${isViewer ? '' : `
-    <div class="card">
+    <div class="card" id="reg-card">
       <h2 class="section" style="margin-top:0">بيانات اللاعب الجديد</h2>
       <label>اسم اللاعب *</label><input id="r-name" />
       <label>اسم ولي الأمر</label><input id="r-parent" />
@@ -1556,6 +1565,13 @@ async function renderSubscribe() {
     </div>
     <div id="r-done"></div>`}`;
   if (!isViewer) {
+  const regJump = document.getElementById('reg-jump');
+  if (regJump) regJump.onclick = () => {
+    const rc = document.getElementById('reg-card');
+    if (rc) rc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const nm = document.getElementById('r-name');
+    if (nm) setTimeout(() => nm.focus({ preventScroll: true }), 450);
+  };
   const upd = () => {
     const academy = document.getElementById('r-academy').checked;
     document.getElementById('r-academy-box').classList.toggle('hidden', !academy);
@@ -1640,6 +1656,17 @@ function readItems(checkClass, amtClass) {
   return out;
 }
 
+const SOCIAL_ICONS = {
+  fb: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M14 8.5V6.8c0-.8.2-1.3 1.4-1.3H17V3h-2.6C11.9 3 11 4.3 11 6.4v2.1H9V12h2v9h3v-9h2.5l.5-3.5h-3z"/></svg>`,
+  ig: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none"/></svg>`,
+  tt: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M16.5 3c.4 2 1.8 3.4 3.9 3.7v3.1c-1.5 0-2.8-.5-3.9-1.3v6.4c0 3.6-2.5 5.9-5.7 5.9-3 0-5.5-2.3-5.5-5.4 0-3 2.4-5.4 5.6-5.3.3 0 .6 0 .9.1v3.2c-.3-.1-.6-.2-.9-.2-1.4 0-2.5 1.1-2.5 2.4 0 1.4 1.1 2.4 2.5 2.4 1.5 0 2.6-1.1 2.6-2.8V3h3z"/></svg>`,
+  userPlus: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="8" r="4"/><path d="M3.5 20c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5"/><path d="M19 8v6M16 11h6"/></svg>`
+};
+const SOCIAL_LINKS = [
+  ['https://www.facebook.com/people/United-Academy/61589982185418/', 'فيسبوك', 'fb'],
+  ['https://www.instagram.com/unitedacademy.eg', 'إنستجرام', 'ig'],
+  ['https://www.tiktok.com/@unitedacademy.eg', 'تيك توك', 'tt']
+];
 const MORE_ICONS = {
   'clip': `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>`,
   'chat': `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>`,
@@ -1659,10 +1686,22 @@ async function renderMore() {
   }
   links.push(['#/staff', 'cap', 'الجهاز']);
   if (full) links.push(['#/settings', 'gear', 'الإعدادات']);
+  const socialCard = `
+    <div class="card" style="margin-top:12px">
+      <h2 class="section" style="margin-top:0">تابع يونايتد أكاديمي</h2>
+      <p class="note">تدريباتنا ومبارياتنا وأخبار الأكاديمية أول بأول</p>
+      <div style="display:flex;gap:14px;justify-content:space-around">
+        ${SOCIAL_LINKS.map(([href, label, icon]) => `
+          <a href="${href}" target="_blank" rel="noopener noreferrer" style="display:flex;flex-direction:column;align-items:center;gap:6px;text-decoration:none;color:var(--ink)">
+            <span style="width:46px;height:46px;border-radius:50%;border:1.5px solid var(--brand);display:flex;align-items:center;justify-content:center;color:var(--brand)">${SOCIAL_ICONS[icon]}</span>
+            <span style="font-size:12px;font-weight:600">${label}</span>
+          </a>`).join('')}
+      </div>
+    </div>`;
   app.innerHTML = links.map(([href, icon, label]) => `
     <div class="list-item" onclick="location.hash='${href}'">
       <div class="grow"><div class="name" style="display:flex;align-items:center;gap:8px">${MORE_ICONS[icon] || ''} ${label}</div></div>
-    </div>`).join('');
+    </div>`).join('') + socialCard;
 }
 const routes = {
   '/': renderDashboard,
