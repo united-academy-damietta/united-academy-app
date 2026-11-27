@@ -1297,7 +1297,10 @@ async function renderSubscribe() {
           <div class="name">✅ اتسجل ${esc(out.player.name)}</div>
           <div class="sub">اشتراك ${out.subscription.months} شهر من ${out.subscription.start_date} لحد ${out.subscription.end_date} - ${out.subscription.amount} جنيه</div>
           <div class="sub">رسالة التأكيد جهزة كمسودة في شاشة الرسائل</div>
-          <button class="btn" onclick="location.hash='#/player/${out.player.id}'" style="margin-top:8px">فتح ملف اللاعب</button>
+          <div class="btn-row" style="margin-top:8px">
+            ${out.wa_link ? `<a class="btn" href="${out.wa_link}" target="_blank" rel="noopener">✈️ ابعت التأكيد في واتساب</a>` : '<div class="sub">مفيش رقم واتساب لولي الأمر - ضيفه من ملف اللاعب عشان يظهر زرار الإرسال</div>'}
+            <button class="btn gray" onclick="location.hash='#/player/${out.player.id}'">فتح ملف اللاعب</button>
+          </div>
         </div>`;
       toast('اتسجل اللاعب والاشتراك ✅');
     } catch (e) { toast(e.message); }

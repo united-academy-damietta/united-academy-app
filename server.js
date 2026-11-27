@@ -386,7 +386,9 @@ app.post('/api/subscriptions/register', asyncWrap((req, res) => {
   const sub = db.prepare('SELECT * FROM subscriptions WHERE id=?').get(sinfo.lastInsertRowid);
   automation.confirmationDraft(pid, sub); // draft only - human sends it
   const player = db.prepare('SELECT * FROM players WHERE id=?').get(pid);
-  res.status(201).json({ player: decoratePlayer(player, today), subscription: sub });
+  const draft = db.prepare('SELECT * FROM messages WHERE dedupe_key=?').get(`pay:${pid}:${sub.id}`);
+  const wa_link = draft ? automation.waLink(player, draft.body) : null;
+  res.status(201).json({ player: decoratePlayer(player, today), subscription: sub, wa_link });
 }));
 
 // ---------- attendance ----------
