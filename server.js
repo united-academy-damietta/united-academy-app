@@ -161,9 +161,31 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
       .sort((a, b) => b.reasons.length - a.reasons.length)
       .slice(0, 50);
   }
+  // Players with a birthday in the coming 7 days (admin/manager).
+  let birthdaysWeek = [];
+  if (!isCoach) {
+    const window7 = [];
+    for (let i = 0; i < 8; i++) window7.push(addDays(today, i).slice(5)); // MM-DD list
+    birthdaysWeek = decorated
+      .filter((p) => p.birth_date && window7.includes(p.birth_date.slice(5)))
+      .map((p) => {
+        const md = p.birth_date.slice(5);
+        const turnYear = Number(today.slice(0, 4)) + (md < today.slice(5) ? 1 : 0);
+        return {
+          id: p.id,
+          name: p.name,
+          squad: p.squad,
+          birth_date: p.birth_date,
+          turns: turnYear - Number(p.birth_date.slice(0, 4)),
+          date_this_year: turnYear + '-' + md
+        };
+      })
+      .sort((a, b) => a.birth_date.slice(5).localeCompare(b.birth_date.slice(5)));
+  }
   res.json({
     today,
     at_risk: atRisk,
+    birthdays_week: birthdaysWeek,
     is_training_day: JSON.parse(getSetting('training_days')).includes(new Date(today + 'T12:00:00Z').getUTCDay()),
     players_total: players.length,
     subs_active: isCoach ? null : activeSubs.length,
@@ -236,9 +258,40 @@ app.get('/api/players/:id', asyncWrap((req, res) => {
   const attendance = db.prepare('SELECT * FROM attendance WHERE player_id = ? ORDER BY date DESC LIMIT 30').all(p.id);
   const messages = db.prepare('SELECT * FROM messages WHERE player_id = ? ORDER BY id DESC LIMIT 30').all(p.id);
   const contact_log = db.prepare('SELECT * FROM contact_log WHERE player_id = ? ORDER BY id DESC LIMIT 50').all(p.id);
-  const out = Object.assign(decoratePlayer(p, today), { subscriptions: subs, attendance, messages, contact_log });
+  const evaluations = db.prepare('SELECT * FROM evaluations WHERE player_id = ? ORDER BY month DESC LIMIT 12').all(p.id);
+  const out = Object.assign(decoratePlayer(p, today), { subscriptions: subs, attendance, messages, contact_log, evaluations });
   if (isCoach && out.subscription) out.subscription = Object.assign({}, out.subscription, { amount: null });
   res.json(out);
+}));
+
+// Monthly player evaluation (upsert): full roles for any player, coach for his squad only.
+app.post('/api/players/:id/evaluation', asyncWrap((req, res) => {
+  if (req.user.role === 'staff') return res.status(403).json({ error: 'مش مسموح' });
+  const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
+  const squad = coachSquad(req);
+  if (squad && p.squad !== squad) return res.status(403).json({ error: 'مش من مجموعتك' });
+  const month = /^\d{4}-\d{2}$/.test(String((req.body && req.body.month) || ''))
+    ? req.body.month : todayCairo().slice(0, 7);
+  const score = (v) => { const n = parseInt(v, 10); return n >= 1 && n <= 5 ? n : null; };
+  const commitment = score(req.body && req.body.commitment);
+  const skill = score(req.body && req.body.skill);
+  const fitness = score(req.body && req.body.fitness);
+  const behavior = score(req.body && req.body.behavior);
+  const notes = String((req.body && req.body.notes) || '').trim().slice(0, 500);
+  if ([commitment, skill, fitness, behavior].every((v) => v === null) && !notes) {
+    return res.status(400).json({ error: 'حط تقييم واحد على الأقل' });
+  }
+  const staffRow = db.prepare('SELECT name FROM staff WHERE user_id = ?').get(req.user.id);
+  const coachName = staffRow ? staffRow.name : req.user.username;
+  db.prepare(
+    `INSERT INTO evaluations (player_id, month, commitment, skill, fitness, behavior, notes, coach_name)
+     VALUES (?,?,?,?,?,?,?,?)
+     ON CONFLICT(player_id, month) DO UPDATE SET
+       commitment=excluded.commitment, skill=excluded.skill, fitness=excluded.fitness,
+       behavior=excluded.behavior, notes=excluded.notes, coach_name=excluded.coach_name, created_at=datetime('now')`
+  ).run(p.id, month, commitment, skill, fitness, behavior, notes, coachName);
+  res.json(db.prepare('SELECT * FROM evaluations WHERE player_id=? AND month=?').get(p.id, month));
 }));
 
 // Parent contact log: full roles for any player, coach for his squad only.
@@ -490,6 +543,13 @@ app.post('/api/messages/generate', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
   const r = automation.runDaily();
   res.json(r);
+}));
+
+// Birthday greeting: creates a draft only - a human sends it from Messages.
+app.post('/api/messages/birthday/:playerId', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const created = automation.birthdayDraft(parseInt(req.params.playerId, 10));
+  res.json({ ok: true, created });
 }));
 
 app.post('/api/messages/:id/sent', asyncWrap((req, res) => {

@@ -93,7 +93,8 @@ const MSG_TYPES = {
   absence: 'تنبيه غياب',
   reminder_7d: 'تذكير تجديد',
   due: 'انتهاء اشتراك',
-  overdue: 'تجديد متأخر'
+  overdue: 'تجديد متأخر',
+  birthday: 'تهنئة عيد ميلاد'
 };
 
 function stateBadge(p) {
@@ -193,6 +194,15 @@ async function renderDashboard() {
           <div class="sub">${p.reasons.map(esc).join(' • ')}${p.parent_phone ? ` • <a href="tel:${esc(p.parent_phone)}" onclick="event.stopPropagation()">${esc(p.parent_phone)}</a>` : ''}</div>
         </div>
       </div>`).join('') : '<div class="empty">مفيش اشتراكات في خطر 👌</div>'}
+    <h2 class="section">🎂 أعياد ميلاد الأسبوع (${d.birthdays_week.length})</h2>
+    ${d.birthdays_week.length ? d.birthdays_week.map((p) => `
+      <div class="list-item" style="cursor:default">
+        <div class="grow">
+          <div class="name">${esc(p.name)}${p.squad ? ' - ' + esc(p.squad) : ''}</div>
+          <div class="sub">هيكمل ${p.turns} سنة يوم ${p.date_this_year}</div>
+        </div>
+        <button class="btn small" data-bday="${p.id}">🎉 جهز تهنئة</button>
+      </div>`).join('') : '<div class="empty">مفيش أعياد ميلاد الأسبوع ده</div>'}
     <div class="btn-row">
       <a class="btn secondary" href="#/messages">الرسائل الجاهزة (${d.draft_messages})</a>
       <button class="btn" id="gen-btn">تحديث التذكيرات</button>
@@ -202,6 +212,14 @@ async function renderDashboard() {
     toast(`اتعمل ${r.renewals} تذكير جديد`);
     renderDashboard();
   };
+  document.querySelectorAll('[data-bday]').forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const r = await api('/messages/birthday/' + btn.dataset.bday, {});
+      toast(r.created ? 'التهنئة جاهزة في شاشة الرسائل 📝' : 'التهنئة متجهزة قبل كده');
+      if (!r.created) btn.disabled = false;
+    };
+  });
 
   if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager')) {
     try {
@@ -333,6 +351,35 @@ async function renderPlayer(id) {
     ${p.messages.length ? p.messages.map((m) => `
       <div class="card"><div class="kv"><span class="k">${MSG_TYPES[m.type] || m.type}</span><span>${m.status === 'sent' ? '✅ اتبعتت' : m.status === 'dismissed' ? 'اتجاهلت' : '📝 مسودة'}</span></div></div>
     `).join('') : '<div class="empty">لا يوجد</div>'}
+    <h2 class="section">التقييم الشهري</h2>
+    ${(() => {
+      const curMonth = todayLocal().slice(0, 7);
+      const cur = (p.evaluations || []).find((e) => e.month === curMonth);
+      const past = (p.evaluations || []).filter((e) => e.month !== curMonth);
+      const scoreLine = (e) => `التزام ${e.commitment || '-'}/5 • مهارة ${e.skill || '-'}/5 • لياقة ${e.fitness || '-'}/5 • سلوك ${e.behavior || '-'}/5`;
+      const trend = (e, prev) => {
+        if (!prev || !e.skill || !prev.skill) return '';
+        const d = e.skill - prev.skill;
+        return d > 0 ? ` <span class="badge active">▲ تطور +${d}</span>` : d < 0 ? ` <span class="badge expired">▼ ${d}</span>` : '';
+      };
+      return `
+    <div class="card">
+      ${cur ? `
+        <div class="kv"><span class="k">تقييم ${cur.month}</span><span>${esc(cur.coach_name || '')}</span></div>
+        <div style="margin-top:4px">${scoreLine(cur)}${trend(cur, past[0])}</div>
+        ${cur.notes ? `<div class="sub" style="margin-top:4px">${esc(cur.notes)}</div>` : ''}` :
+        '<div class="note">لسه مفيش تقييم للشهر ده</div>'}
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn secondary" id="ev-btn">${cur ? 'تعديل تقييم الشهر ده' : 'قيّم الشهر ده'}</button>
+      </div>
+    </div>
+    ${past.length ? past.map((e, i) => `
+      <div class="card">
+        <div class="kv"><span class="k">${e.month}</span><span>${esc(e.coach_name || '')}</span></div>
+        <div style="margin-top:4px">${scoreLine(e)}${trend(e, past[i + 1])}</div>
+        ${e.notes ? `<div class="sub" style="margin-top:4px">${esc(e.notes)}</div>` : ''}
+      </div>`).join('') : ''}`;
+    })()}
     <h2 class="section">سجل التواصل مع ولي الأمر</h2>
     <div class="card">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -353,6 +400,35 @@ async function renderPlayer(id) {
         <div style="margin-top:4px">${esc(c.note || '')}</div>
       </div>
     `).join('') : '<div class="empty">مفيش تواصل مسجل لسه</div>'}`;
+  document.getElementById('ev-btn').onclick = () => {
+    const curMonth = todayLocal().slice(0, 7);
+    const cur = (p.evaluations || []).find((e) => e.month === curMonth) || {};
+    const opts = (v) => [1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${n === v ? 'selected' : ''}>${n}</option>`).join('');
+    openModal(`
+      <h3>تقييم ${esc(p.name)} - شهر ${curMonth}</h3>
+      <label>الالتزام بالحضور</label><select id="ev-commitment"><option value="">-</option>${opts(cur.commitment)}</select>
+      <label>المستوى المهاري</label><select id="ev-skill"><option value="">-</option>${opts(cur.skill)}</select>
+      <label>اللياقة البدنية</label><select id="ev-fitness"><option value="">-</option>${opts(cur.fitness)}</select>
+      <label>السلوك والانضباط</label><select id="ev-behavior"><option value="">-</option>${opts(cur.behavior)}</select>
+      <label>ملاحظات</label><input id="ev-notes" value="${esc(cur.notes || '')}" placeholder="نقاط قوة أو حاجة محتاجة تتحسن" />
+      <div class="btn-row">
+        <button class="btn gray" onclick="closeModal()">إلغاء</button>
+        <button class="btn" id="ev-save">حفظ التقييم</button>
+      </div>`);
+    document.getElementById('ev-save').onclick = async () => {
+      await api(`/players/${id}/evaluation`, { body: {
+        month: curMonth,
+        commitment: document.getElementById('ev-commitment').value,
+        skill: document.getElementById('ev-skill').value,
+        fitness: document.getElementById('ev-fitness').value,
+        behavior: document.getElementById('ev-behavior').value,
+        notes: document.getElementById('ev-notes').value
+      } });
+      closeModal();
+      toast('اتحفظ التقييم ✅');
+      renderPlayer(id);
+    };
+  };
   document.getElementById('cl-add').onclick = async () => {
     const note = document.getElementById('cl-note').value.trim();
     if (!note) { toast('اكتب ملاحظة التواصل الأول'); return; }

@@ -224,6 +224,20 @@ function seedIfEmpty() {
 
   // Demo parent-contact log entries.
   const demoIds = db.prepare('SELECT id FROM players ORDER BY id LIMIT 20').all().map((r) => r.id);
+  // Three players get birthdays in the coming week so the birthday box has content.
+  [1, 3, 5].forEach((offset, i) => {
+    const md = addDays(today, offset).slice(5);
+    db.prepare('UPDATE players SET birth_date = substr(birth_date, 1, 4) || ? WHERE id = ?').run('-' + md, demoIds[i * 7]);
+  });
+  // Sample evaluations for last month so history and trend show up.
+  const lastMonth = addMonths(today.slice(0, 8) + '01', -1).slice(0, 7);
+  const insEval = db.prepare(
+    'INSERT OR IGNORE INTO evaluations (player_id, month, commitment, skill, fitness, behavior, notes, coach_name) VALUES (?,?,?,?,?,?,?,?)'
+  );
+  insEval.run(demoIds[0], lastMonth, 5, 3, 4, 5, 'مجتهد وملتزم، محتاج يشتغل على التسديد', 'ك شهد');
+  insEval.run(demoIds[1], lastMonth, 4, 4, 4, 4, '', 'ك شهد');
+  insEval.run(demoIds[2], lastMonth, 3, 4, 3, 4, 'لياقته محتاجة تتحسن', 'ك شهد');
+  insEval.run(demoIds[3], lastMonth, 5, 5, 4, 5, 'موهبة واضحة', 'ك شهد');
   const insContact = db.prepare(
     'INSERT INTO contact_log (player_id, type, note, staff_name, created_at) VALUES (?,?,?,?,?)'
   );

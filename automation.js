@@ -51,6 +51,15 @@ function confirmationDraft(playerId, sub) {
   return createDraft(player, 'payment', body, `pay:${playerId}:${sub.id}`);
 }
 
+// Birthday greeting draft for one player (deduped per year).
+function birthdayDraft(playerId) {
+  const player = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId);
+  if (!player) return false;
+  const year = todayCairo().slice(0, 4);
+  const body = fill(getSetting('tpl_birthday'), baseVars(player));
+  return createDraft(player, 'birthday', body, `bday:${playerId}:${year}`);
+}
+
 // Absence drafts for one training date: active/grace players not marked present.
 function absenceDrafts(date) {
   const today = date || todayCairo();
@@ -111,4 +120,4 @@ function waLink(player, body) {
   return `https://wa.me/${phone}?text=${encodeURIComponent(body)}`;
 }
 
-module.exports = { confirmationDraft, absenceDrafts, renewalDrafts, runDaily, waLink, fill };
+module.exports = { confirmationDraft, absenceDrafts, renewalDrafts, birthdayDraft, runDaily, waLink, fill };
