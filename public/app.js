@@ -476,8 +476,9 @@ async function renderAttendance() {
     } else {
       body.innerHTML = '';
     }
-    body.insertAdjacentHTML('beforeend', playerRows(d.players));
     body.insertAdjacentHTML('beforeend', `
+      <input id="att-search" placeholder="🔍 ابحث باسم اللاعب..." style="margin-bottom:8px" />
+      <div id="att-rows"></div>
       <div class="btn-row">
         <button class="btn block" id="save-day">💾 حفظ حضور اليوم</button>
       </div>
@@ -495,21 +496,24 @@ async function renderAttendance() {
         `مسجل لحد دلوقتي: ${nPresent} حاضر - ${nAbsent} غائب - من ${d.players.length} لاعب`;
     }
     refreshCount();
-    body.querySelectorAll('.toggle-pill button').forEach((btn) => {
-      btn.onclick = () => {
-        const pid = btn.dataset.pid;
-        pending[pid] = btn.dataset.val === '1';
-        const pill = btn.closest('.list-item');
-        pill.querySelectorAll('.toggle-pill button').forEach((x) => x.classList.remove('on-present', 'on-absent'));
-        btn.classList.add(btn.dataset.val === '1' ? 'on-present' : 'on-absent');
-        let clr = pill.querySelector('.att-clear');
-        if (!clr) {
-          pill.insertAdjacentHTML('beforeend', `<button class="btn gray small att-clear" data-pid="${pid}" title="مسح التسجيل">✕</button>`);
-          bindClear(pill.querySelector('.att-clear'));
-        }
-        refreshCount();
-      };
-    });
+    function bindRowEvents(container) {
+      container.querySelectorAll('.toggle-pill button').forEach((btn) => {
+        btn.onclick = () => {
+          const pid = btn.dataset.pid;
+          pending[pid] = btn.dataset.val === '1';
+          const pill = btn.closest('.list-item');
+          pill.querySelectorAll('.toggle-pill button').forEach((x) => x.classList.remove('on-present', 'on-absent'));
+          btn.classList.add(btn.dataset.val === '1' ? 'on-present' : 'on-absent');
+          let clr = pill.querySelector('.att-clear');
+          if (!clr) {
+            pill.insertAdjacentHTML('beforeend', `<button class="btn gray small att-clear" data-pid="${pid}" title="مسح التسجيل">✕</button>`);
+            bindClear(pill.querySelector('.att-clear'));
+          }
+          refreshCount();
+        };
+      });
+      container.querySelectorAll('.att-clear').forEach(bindClear);
+    }
     function bindClear(btn) {
       btn.onclick = () => {
         const pid = btn.dataset.pid;
@@ -520,7 +524,18 @@ async function renderAttendance() {
         refreshCount();
       };
     }
-    body.querySelectorAll('.att-clear').forEach(bindClear);
+    function renderRows(q) {
+      const query = (q || '').trim();
+      const rows = query
+        ? d.players.filter((p) => p.name.includes(query))
+        : d.players;
+      const container = document.getElementById('att-rows');
+      container.innerHTML = playerRows(rows, pending);
+      if (query && !rows.length) container.innerHTML = '<div class="empty">مفيش لاعب بالاسم ده في مجموعتك</div>';
+      bindRowEvents(container);
+    }
+    renderRows('');
+    document.getElementById('att-search').oninput = (e) => renderRows(e.target.value);
     document.getElementById('save-day').onclick = async () => {
       const marks = Object.entries(pending).map(([pid, v]) => ({ player_id: Number(pid), present: v }));
       const nPresent = marks.filter((m) => m.present === true).length;
@@ -537,20 +552,23 @@ async function renderAttendance() {
       toast(`اتجهزت ${r.absence_drafts_created} رسالة غياب`);
     };
   }
-  function playerRows(players) {
+  function playerRows(players, pending) {
     if (!players.length) return '<div class="empty">مفيش لاعبين</div>';
-    return players.map((p) => `
+    return players.map((p) => {
+      const cur = pending && pending[p.id] !== undefined ? pending[p.id] : p.present;
+      return `
       <div class="list-item" style="cursor:default">
         <div class="grow">
           <div class="name">${esc(p.name)}</div>
           <div class="sub">${esc(p.age_group || '')}</div>
         </div>
         <div class="toggle-pill">
-          <button data-pid="${p.id}" data-val="1" class="${p.present === true ? 'on-present' : ''}">حاضر</button>
-          <button data-pid="${p.id}" data-val="0" class="${p.present === false ? 'on-absent' : ''}">غائب</button>
+          <button data-pid="${p.id}" data-val="1" class="${cur === true ? 'on-present' : ''}">حاضر</button>
+          <button data-pid="${p.id}" data-val="0" class="${cur === false ? 'on-absent' : ''}">غائب</button>
         </div>
-        ${p.present !== null ? `<button class="btn gray small att-clear" data-pid="${p.id}" title="مسح التسجيل">✕</button>` : ''}
-      </div>`).join('');
+        ${cur !== null && cur !== undefined ? `<button class="btn gray small att-clear" data-pid="${p.id}" title="مسح التسجيل">✕</button>` : ''}
+      </div>`;
+    }).join('');
   }
 
   // ---- month view: training days, absentees, per-player attendance days ----
