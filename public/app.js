@@ -939,7 +939,7 @@ async function renderStaff() {
 
 async function renderTrainingDay() {
   pageTitle.textContent = 'يوم التدريب';
-  const [d, m] = await Promise.all([api('/api/dashboard'), api('/api/attendance/month')]);
+  const [d, m] = await Promise.all([api('/dashboard'), api('/attendance/month')]);
   const unmarked = d.players_total - d.present_today - d.absent_today;
   const dropoutsBySquad = {};
   (m.dropouts || []).forEach((p) => { const k = p.squad || ''; dropoutsBySquad[k] = (dropoutsBySquad[k] || 0) + 1; });
