@@ -15,7 +15,8 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-text-size-adjust: 100%; }
 body {
-  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-family: "Cairo", "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 15px;
   background: var(--bg);
   color: var(--text);
   padding-bottom: 76px;

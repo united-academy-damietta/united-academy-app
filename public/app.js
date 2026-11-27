@@ -396,8 +396,17 @@ async function renderPlayers() {
       load(document.getElementById('search').value.trim());
     };
   });
+  function chipCounts(rows) {
+    const c = { '': rows.length, active: 0, grace: 0, expired: 0 };
+    rows.forEach((p) => { if (c[p.sub_state] !== undefined) c[p.sub_state]++; });
+    document.querySelectorAll('#p-chips [data-chip]').forEach((b) => {
+      const k = b.dataset.chip;
+      b.textContent = b.textContent.replace(/\s*\(\d+\)$/, '') + ' (' + c[k] + ')';
+    });
+  }
   async function load(q) {
     let rows = await api('/players' + (q ? `?search=${encodeURIComponent(q)}` : ''));
+    if (!q) chipCounts(rows);
     if (chipState) rows = rows.filter((p) => p.sub_state === chipState);
     list.innerHTML = rows.length ? rows.map((p) => `
       <div class="list-item" onclick="location.hash='#/player/${p.id}'">
