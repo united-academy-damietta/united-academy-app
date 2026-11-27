@@ -13,7 +13,8 @@ const {
   currentSub,
   subState,
   DEFAULTS,
-  PLANS
+  PLANS,
+  getPlans
 } = require('./db');
 const automation = require('./automation');
 const { seedIfEmpty } = require('./seed');
@@ -361,7 +362,19 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
 }));
 
 // ---------- subscriptions ----------
-app.get('/api/plans', asyncWrap((req, res) => res.json(PLANS)));
+app.get('/api/plans', asyncWrap((req, res) => res.json(getPlans())));
+
+// أسعار خطط الأكاديمية قابلة للتعديل من الإعدادات (إدارة بس)
+app.put('/api/plans', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  ['1', '3', '6', '12'].forEach((k) => {
+    const v = req.body && req.body[k];
+    if (v === undefined) return;
+    const n = Number(v);
+    if (Number.isFinite(n) && n >= 0 && n <= 1000000) setSetting('plan_' + k + '_price', String(Math.round(n)));
+  });
+  res.json(getPlans());
+}));
 
 // بنود الاشتراك (الزي/الدوري/السفرية...) - إدارة بس، المدرب ميشوفش فلوس
 app.get('/api/subscription-items', asyncWrap((req, res) => {
@@ -404,7 +417,7 @@ app.post('/api/players/:id/subscriptions', asyncWrap((req, res) => {
   const today = todayCairo();
   const start = (req.body && req.body.start_date) || today;
   const planKey = req.body && req.body.plan;
-  const plan = PLANS[String(planKey)];
+  const plan = getPlans()[String(planKey)];
   const months = plan ? plan.months : (parseInt((req.body && req.body.months) || getSetting('sub_months'), 10) || 1);
   const amount = plan ? plan.amount : (Number((req.body && req.body.amount !== undefined ? req.body.amount : getSetting('sub_amount'))) || 0);
   const end = addMonths(start, months);
@@ -431,7 +444,7 @@ app.post('/api/subscriptions/register', asyncWrap((req, res) => {
   const pid = pinfo.lastInsertRowid;
   const today = todayCairo();
   const start = /^\d{4}-\d{2}-\d{2}$/.test(String(b.start_date || '')) ? b.start_date : today;
-  const plan = PLANS[String(b.plan)];
+  const plan = getPlans()[String(b.plan)];
   let sub = null;
   if (plan || b.months !== undefined || b.amount !== undefined) { // اشتراك الأكاديمية اختياري لو فيه بنود تانية بس
     const months = plan ? plan.months : (parseInt(b.months, 10) || 1);

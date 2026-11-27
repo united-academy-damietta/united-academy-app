@@ -127,6 +127,10 @@ CREATE TABLE IF NOT EXISTS announcements (
 const DEFAULTS = {
   training_days: '[0,2,4]', // Sunday, Tuesday, Thursday
   grace_days: '7',
+  plan_1_price: '700',
+  plan_3_price: '1890',
+  plan_6_price: '3570',
+  plan_12_price: '6720',
   sub_months: '1',
   sub_amount: '700',
   academy_name: 'يونايتد أكاديمي',
@@ -168,6 +172,17 @@ const PLANS = {
   '6': { months: 6, label: '6 شهور', amount: 3570 },
   '12': { months: 12, label: 'سنوي', amount: 6720 }
 };
+
+// أسعار الخطط بتتعدل من الإعدادات (settings plan_X_price) مع الرجوع للقيم الافتراضية
+function getPlans() {
+  const out = {};
+  Object.entries(PLANS).forEach(([k, v]) => {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('plan_' + k + '_price');
+    const n = row ? parseInt(row.value, 10) : NaN;
+    out[k] = { months: v.months, label: v.label, amount: Number.isFinite(n) ? n : v.amount };
+  });
+  return out;
+}
 
 const getSettingStmt = db.prepare('SELECT value FROM settings WHERE key = ?');
 const setSettingStmt = db.prepare(
@@ -246,6 +261,7 @@ function normalizePhone(p) {
 module.exports = {
   db,
   PLANS,
+  getPlans,
   DEFAULTS,
   getSetting,
   setSetting,

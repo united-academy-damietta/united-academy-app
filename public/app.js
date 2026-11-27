@@ -914,6 +914,12 @@ async function renderSettings() {
       <button class="btn block" id="st-items-save" style="margin-top:8px">حفظ أسعار البنود</button>
     </div>
     <div class="card" style="margin-top:10px">
+      <h2 class="section" style="margin-top:0">أسعار خطط الأكاديمية</h2>
+      <p class="note">أسعار الاشتراك (شهري / 3 شهور / 6 شهور / سنوي). أي تعديل من هنا بينطبق على التسجيل والتجديد فورًا.</p>
+      <div id="plans-prices"></div>
+      <button class="btn block" id="st-plans-save" style="margin-top:8px">حفظ أسعار الخطط</button>
+    </div>
+    <div class="card" style="margin-top:10px">
       <h2 class="section" style="margin-top:0">المستخدمون</h2>
       <div id="users-list"></div>
       <label>اسم مستخدم جديد</label><input id="u-name" />
@@ -985,6 +991,24 @@ async function renderSettings() {
     } catch (e) { document.getElementById('items-prices').innerHTML = '<div class="empty">مش متاحة</div>'; }
   }
   await loadItemPrices();
+  async function loadPlanPrices() {
+    try {
+      const plans = await api('/plans');
+      document.getElementById('plans-prices').innerHTML = Object.entries(plans).map(([k, p]) => `
+        <div class="kv" style="align-items:center"><span class="k">${esc(p.label)}</span>
+        <span><input type="number" min="0" data-plan-amt="${k}" value="${p.amount}" style="width:110px" /> جنيه</span></div>`).join('');
+    } catch (e) { document.getElementById('plans-prices').innerHTML = '<div class="empty">مش متاحة</div>'; }
+  }
+  await loadPlanPrices();
+  document.getElementById('st-plans-save').onclick = async () => {
+    try {
+      const body = {};
+      [...document.querySelectorAll('[data-plan-amt]')].forEach((inp) => { body[inp.dataset.planAmt] = inp.value; });
+      await api('/plans', { method: 'PUT', body });
+      toast('اتحفظت أسعار الخطط ✅');
+      loadPlanPrices();
+    } catch (e) { toast(e.message); }
+  };
   document.getElementById('st-items-save').onclick = async () => {
     try {
       const inputs = [...document.querySelectorAll('[data-item-amt]')];
