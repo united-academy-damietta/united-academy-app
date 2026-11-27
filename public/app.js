@@ -1101,6 +1101,24 @@ async function renderSettings() {
       loadItemPrices();
     } catch (e) { toast(e.message); }
   };
+  // أكورديون: كل كارت إعدادات يتفتح ويتقفل من عنوانه
+  app.querySelectorAll(':scope > .card').forEach((card, i) => {
+    const h = card.querySelector('h2.section');
+    if (!h) return;
+    const bodyWrap = document.createElement('div');
+    bodyWrap.className = 'acc-body';
+    while (h.nextSibling) bodyWrap.appendChild(h.nextSibling);
+    card.appendChild(bodyWrap);
+    h.classList.add('acc-head');
+    h.insertAdjacentHTML('beforeend', '<span class="acc-arrow" style="margin-inline-start:auto">▾</span>');
+    if (i > 0) { bodyWrap.style.display = 'none'; h.querySelector('.acc-arrow').style.transform = 'rotate(180deg)'; }
+    h.style.cursor = 'pointer';
+    h.onclick = () => {
+      const open = bodyWrap.style.display !== 'none';
+      bodyWrap.style.display = open ? 'none' : '';
+      h.querySelector('.acc-arrow').style.transform = open ? 'rotate(180deg)' : '';
+    };
+  });
   document.getElementById('st-save').onclick = async () => {
     const training = [...document.querySelectorAll('input[data-day]:checked')].map((c) => +c.dataset.day);
     await api('/settings', { method: 'PUT', body: {
