@@ -838,19 +838,33 @@ async function renderStaff() {
           <button data-sid="${m.id}" data-val="absent" class="${m.status === 'absent' ? 'on-absent' : ''}">غائب</button>
           <button data-sid="${m.id}" data-val="late" class="${m.status === 'late' ? 'on-late' : ''}">متأخر</button>
         </div>
+        <input type="number" min="0" max="600" inputmode="numeric" class="late-input" data-sid="${m.id}"
+          value="${m.late_minutes || ''}" placeholder="دقائق التأخير" title="مدة التأخير بالدقائق"
+          style="width:86px;text-align:center;padding:6px 4px;border:1px solid var(--border);border-radius:10px;font:inherit" />
         ${m.status ? `<button class="btn gray small staff-clear" data-sid="${m.id}">✕</button>` : ''}` :
-        (m.status ? `<span class="badge ${m.status === 'present' ? 'active' : m.status === 'late' ? 'grace' : 'expired'}">${m.status === 'present' ? 'حاضر' : m.status === 'late' ? 'متأخر' : 'غائب'}</span>` : '<span class="note">-</span>')}
+        (m.status ? `<span class="badge ${m.status === 'present' ? 'active' : m.status === 'late' ? 'grace' : 'expired'}">${m.status === 'present' ? 'حاضر' : m.status === 'late' ? 'متأخر' : 'غائب'}${m.status === 'late' && m.late_minutes ? ' ' + m.late_minutes + ' د' : ''}</span>` : '<span class="note">-</span>')}
       </div>`).join('') : '<div class="empty">مفيش أعضاء جهاز</div>';
     if (canEdit) {
       document.querySelectorAll('#staff-body .toggle-pill button').forEach((b) => {
         b.onclick = async () => {
           const body = { staff_id: b.dataset.sid, date, status: b.dataset.val };
           if (b.dataset.val === 'late') {
-            const mins = prompt('اتأخر كام دقيقة؟', '15');
-            if (mins === null) return;
-            body.late_minutes = parseInt(mins, 10) || 0;
+            const inp = document.querySelector(`.late-input[data-sid="${b.dataset.sid}"]`);
+            body.late_minutes = inp ? (parseInt(inp.value, 10) || 0) : 0;
           }
           await api('/staff-attendance', { body });
+          load(date);
+        };
+      });
+      // عدّل دقائق التأخير لأي حد متسجل متأخر من غير ما تعيد ضغط الزر
+      document.querySelectorAll('.late-input').forEach((inp) => {
+        inp.onchange = async () => {
+          const sid = inp.dataset.sid;
+          const row = inp.closest('.list-item');
+          const isLate = row.querySelector('.toggle-pill button[data-val="late"]').classList.contains('on-late');
+          if (!isLate) return;
+          await api('/staff-attendance', { body: { staff_id: sid, date, status: 'late', late_minutes: parseInt(inp.value, 10) || 0 } });
+          toast('اتحفظت دقائق التأخير ✅');
           load(date);
         };
       });
