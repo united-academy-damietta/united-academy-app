@@ -170,6 +170,7 @@ async function renderDashboard() {
           <div class="name">${esc(p.name)}</div>
           <div class="sub">هيكمل ${p.turns} سنة يوم ${p.date_this_year}</div>
         </div>
+        <button class="btn small" data-bday-wa="${p.id}">🎉 جهز تهنئة</button>
       </div>`).join('') : ''}
     <h2 class="section">أكتر اللاعبين حضورًا الشهر ده</h2>
     ${topAttendeeRows(m.top_attendees)}
@@ -208,6 +209,15 @@ async function renderDashboard() {
           <p class="note">الإدارة هي اللي بتسجل حضور وغياب الجهاز - الشاشة دي للعرض بس.</p>`;
       }
     } catch (e) {}
+    document.querySelectorAll('[data-bday-wa]').forEach((btn) => {
+      btn.onclick = async () => {
+        btn.disabled = true;
+        const r = await api('/messages/birthday/' + btn.dataset.bdayWa, {});
+        toast(r.created ? 'التهنئة جاهزة - هتتفتح في واتساب ابعتها بنفسك 🎉' : 'التهنئة متجهزة قبل كده');
+        if (r.wa_link) window.open(r.wa_link, '_blank', 'noopener');
+        btn.disabled = false;
+      };
+    });
     return;
   }
   app.innerHTML = hero + `

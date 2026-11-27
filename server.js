@@ -565,9 +565,15 @@ app.post('/api/announcements', asyncWrap((req, res) => {
 
 // Birthday greeting: creates a draft only - a human sends it from Messages.
 app.post('/api/messages/birthday/:playerId', asyncWrap((req, res) => {
-  if (!requireFull(req, res)) return;
-  const created = automation.birthdayDraft(parseInt(req.params.playerId, 10));
-  res.json({ ok: true, created });
+  // الإدارة لأي لاعب، والمدرب للاعبين مجموعته بس - المسودة بتتفتح في واتساب والإرسال يدوي
+  const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.playerId);
+  if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
+  if (req.user.role === 'staff') return res.status(403).json({ error: 'مش مسموح' });
+  const squad = coachSquad(req);
+  if (squad && p.squad !== squad) return res.status(403).json({ error: 'مش من مجموعتك' });
+  const created = automation.birthdayDraft(p.id);
+  const msg = db.prepare('SELECT body FROM messages WHERE dedupe_key = ?').get('bday:' + p.id + ':' + todayCairo().slice(0, 4));
+  res.json({ ok: true, created, wa_link: msg ? automation.waLink(p, msg.body) : null });
 }));
 
 app.post('/api/messages/:id/sent', asyncWrap((req, res) => {
