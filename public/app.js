@@ -313,7 +313,7 @@ async function renderDashboard() {
       document.querySelector('.grid').insertAdjacentHTML('beforeend', `
         <div class="card stat"><div class="num">${f.expenses_month}</div><div class="lbl">مصاريف الشهر</div></div>
         <div class="card stat"><div class="num">${f.expenses_year}</div><div class="lbl">مصاريف السنة</div></div>
-        <div class="card stat"><div class="num" style="color:${f.net_year >= 0 ? 'var(--green-dark)' : 'var(--red)'}">${f.net_year}</div><div class="lbl">صافي السنة</div></div>`);
+        ${f.net_year === null ? '' : `<div class="card stat"><div class="num" style="color:${f.net_year >= 0 ? 'var(--green-dark)' : 'var(--red)'}">${f.net_year}</div><div class="lbl">صافي السنة</div></div>`}`);
     } catch (e) {}
     try {
       const coaches = await api('/coaches-overview');
@@ -986,11 +986,11 @@ async function renderExpenses() {
       <div class="card stat"><div class="num">${f.revenue_year}</div><div class="lbl">محصلة السنة</div></div>
       <div class="card stat"><div class="num">${f.expenses_year}</div><div class="lbl">مصاريف السنة</div></div>
     </div>
-    <div class="card" style="text-align:center">
+    ${f.net_year === null ? '' : `<div class="card" style="text-align:center">
       <div class="lbl" style="color:var(--muted);font-size:13px">صافي السنة</div>
       <div class="num" style="font-size:30px;font-weight:800;color:${f.net_year >= 0 ? 'var(--green-dark)' : 'var(--red)'}">${f.net_year} جنيه</div>
       <div class="note">صافي الشهر: ${f.net_month} جنيه</div>
-    </div>
+    </div>`}
     <h2 class="section">تسجيل مصروف</h2>
     <div class="card">
       <label>البيان</label><input id="e-title" placeholder="مثال: إيجار الملعب" />

@@ -708,11 +708,13 @@ app.get('/api/finance', asyncWrap((req, res) => {
   const expYear = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE date >= ?').get(yearStart).t;
   const revMonth = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM subscriptions WHERE start_date >= ?').get(monthStart).t;
   const revYear = db.prepare('SELECT COALESCE(SUM(amount),0) AS t FROM subscriptions WHERE start_date >= ?').get(yearStart).t;
+  const isNagar = req.user.username === 'anagar'; // صافي السنة/الشهر لأحمد النجار (المدير الفني) بس
   res.json({
     month: today.slice(0, 7), year: today.slice(0, 4),
     expenses_month: expMonth, expenses_year: expYear,
     revenue_month: revMonth, revenue_year: revYear,
-    net_month: revMonth - expMonth, net_year: revYear - expYear
+    net_month: isNagar ? revMonth - expMonth : null,
+    net_year: isNagar ? revYear - expYear : null
   });
 }));
 
