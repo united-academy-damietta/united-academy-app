@@ -125,6 +125,21 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
     : db.prepare(`SELECT COUNT(*) AS n FROM attendance WHERE date = ? AND present = 0`).get(today).n;
   const drafts = db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE status='draft'`).get();
   const isCoach = req.user.role === 'coach';
+  // Collection rate (admin/manager only): collected vs due this month (collected + monthly-equivalent owed by grace/expired players).
+  let collectionDue = null;
+  let collectionRate = null;
+  let lateDueAmount = null;
+  if (!isCoach && req.user.role !== 'viewer') {
+    lateDueAmount = decorated
+      .filter((p) => p.sub_state === 'grace' || p.sub_state === 'expired')
+      .reduce((sum, p) => {
+        const sub = p.subscription;
+        if (sub && sub.amount && sub.months) return sum + Math.round(sub.amount / sub.months);
+        return sum;
+      }, 0);
+    collectionDue = collected.total + lateDueAmount;
+    collectionRate = collectionDue > 0 ? Math.min(100, Math.round((collected.total / collectionDue) * 100)) : 100;
+  }
   // Dropout counts (admin/manager): last recorded presence 14+ days ago.
   let dropoutMonth = 0;
   let dropoutYear = 0;
@@ -255,6 +270,9 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
     dropouts_list: isCoach ? null : dropoutsList,
     late_unpaid: isCoach ? null : decorated.filter((p) => p.sub_state === 'grace' || p.sub_state === 'expired').length,
     collected_month: (isCoach || req.user.role === 'viewer') ? null : collected.total,
+    collection_due: collectionDue,
+    collection_rate: collectionRate,
+    late_due_amount: lateDueAmount,
     payments_month: (isCoach || req.user.role === 'viewer') ? null : collected.n,
     present_today: att.present,
     absent_today: absentToday,

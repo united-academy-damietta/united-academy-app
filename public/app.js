@@ -249,7 +249,24 @@ async function renderDashboard() {
     el.style.display = opening ? '' : 'none';
     if (opening) el.scrollIntoView({ behavior: 'smooth' });
   };
-  app.innerHTML = hero + `
+  const quickBar = (currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager')) ? `
+    <div class="btn-row" style="margin-bottom:10px">
+      <a class="btn block" href="#/attendance">✅ حضور النهاردة</a>
+      <a class="btn block" href="#/subscribe">💳 تسجيل اشتراك</a>
+      <a class="btn block" href="#/expenses">💸 إضافة مصروف</a>
+    </div>` : '';
+  const collectionCard = (d.collection_rate !== null && d.collection_rate !== undefined) ? `
+    <div class="card" style="margin-top:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="font-weight:800">تحصيل الشهر 📈</div>
+        <div style="font-weight:800;color:var(--brand);font-size:20px">${d.collection_rate}%</div>
+      </div>
+      <div style="background:#f3f4f6;border-radius:999px;height:10px;margin:8px 0;overflow:hidden">
+        <div style="background:var(--brand);height:100%;width:${d.collection_rate}%;border-radius:999px"></div>
+      </div>
+      <div class="note" style="margin:0">اتحصل ${fmt(d.collected_month)} من ${fmt(d.collection_due)} جنيه مستحق${d.late_due_amount ? ' (منهم ' + fmt(d.late_due_amount) + ' على المتأخرين)' : ''}</div>
+    </div>` : '';
+  app.innerHTML = hero + quickBar + `
     <div class="grid">
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
@@ -260,6 +277,7 @@ async function renderDashboard() {
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('bday-month-list')"><div class="num">${d.birthdays_month.length}</div><div class="lbl">عيد ميلاد الشهر ده 🎂</div></div>
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('top-att-list')"><div class="num">${d.top_attendance.length ? d.top_attendance[0].pct + '%' : '0'}</div><div class="lbl">أعلى نسبة حضور الشهر ده ✅</div></div>
     </div>
+    ${collectionCard}
     <div id="bday-month-list" style="display:none">
     <h2 class="section">🎂 أعياد ميلاد الشهر ده (${d.birthdays_month.length})</h2>
     ${d.birthdays_month.length ? d.birthdays_month.map((p) => `
