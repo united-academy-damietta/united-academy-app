@@ -21,7 +21,9 @@ const auth = require('./auth');
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') // دايمن يسأل السيرفر عن آخر نسخة - مفيش نسخة قديمة بتفضل عالقة عند حد
+}));
 
 seedIfEmpty();
 auth.ensureAdmin();
