@@ -237,7 +237,7 @@ async function renderDashboard() {
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('renew-next-list')"><div class="num">${d.renew_next_month}</div><div class="lbl">لاعب هيجددوا الشهر الجاي 🔄</div></div>
       <div class="card stat" style="cursor:pointer" onclick="document.getElementById('late-list').scrollIntoView({behavior:'smooth'})"><div class="num">${d.late_unpaid}</div><div class="lbl">متأخرين في الدفع ⚠️</div></div>
-      <div class="card stat"><div class="num">${fmt(d.collected_month)}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
+      <div class="card stat"><div class="num">${fmt(d.collected_month)}</div><div class="lbl">${d.payments_month === null ? 'التحصيلات (غير متاحة لهذا الحساب)' : 'جنيه محصلة الشهر ده (' + d.payments_month + ' دفعة)'}</div></div>
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('dropout-list')"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال 3 شهور (الشهر ده: ${d.dropout_month})</div></div>
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('bday-month-list')"><div class="num">${d.birthdays_month.length}</div><div class="lbl">عيد ميلاد الشهر ده 🎂</div></div>
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('top-att-list')"><div class="num">${d.top_attendance.length ? d.top_attendance[0].pct + '%' : '0'}</div><div class="lbl">أعلى نسبة حضور الشهر ده ✅</div></div>
