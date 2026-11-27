@@ -785,7 +785,10 @@ app.get('/api/my-attendance', asyncWrap((req, res) => {
             SUM(CASE WHEN status = 'late' THEN late_minutes ELSE 0 END) AS late_minutes
      FROM staff_attendance WHERE staff_id = ? AND date >= ? GROUP BY ym ORDER BY ym DESC`
   ).all(me.id, yearStart);
-  res.json({ linked: true, name: me.name, month: today.slice(0, 7), totals: tot, rows, months: yearRows });
+  const allRows = db.prepare(
+    'SELECT date, status, late_minutes FROM staff_attendance WHERE staff_id = ? AND date >= ? ORDER BY date DESC'
+  ).all(me.id, yearStart);
+  res.json({ linked: true, name: me.name, month: today.slice(0, 7), totals: tot, rows, months: yearRows, all_rows: allRows });
 }));
 
 // ---------- coaches overview (full roles) ----------

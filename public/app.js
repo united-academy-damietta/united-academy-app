@@ -2,7 +2,7 @@
 const app = document.getElementById('app');
 let currentUser = null;
 const NAV_RULES = {
-  coach: ['/', '/players', '/attendance'],
+  coach: ['/', '/players', '/attendance', '/my-att'],
   staff: ['/staff']
 };
 function applyRoleNav() {
@@ -1032,6 +1032,31 @@ async function renderExpenses() {
   await loadExp();
 }
 
+// ---------------- My attendance (المدرب يشوف سجله هو بس - عرض فقط) ----------------
+async function renderMyAttendance() {
+  pageTitle.textContent = 'حضوري';
+  const mine = await api('/my-attendance');
+  if (!mine.linked) { app.innerHTML = '<div class="empty">حسابك مش مربوط بعضو جهاز - كلم الإدارة</div>'; return; }
+  const AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const ST = { present: '✅ حاضر', absent: '❌ غائب', late: '⏰ متأخر' };
+  app.innerHTML = `
+    <h2 class="section">إجمالي كل شهر (السنة دي)</h2>
+    ${(mine.months || []).length ? mine.months.map((mo) => `
+      <div class="list-item" style="cursor:default">
+        <div class="grow">
+          <div class="name">${AR_MONTHS[Number(mo.ym.slice(5)) - 1]} ${mo.ym.slice(0, 4)}</div>
+          <div class="sub">✅ حضور ${mo.present} يوم${mo.absent ? ' • ❌ غياب ' + mo.absent : ''}${mo.late ? ' • ⏰ تأخير ' + mo.late + ' (' + mo.late_minutes + ' د)' : ''}</div>
+        </div>
+      </div>`).join('') : '<div class="empty">لسه مفيش تسجيل السنة دي</div>'}
+    <h2 class="section">سجل الحضور بالتاريخ</h2>
+    ${(mine.all_rows || []).length ? mine.all_rows.map((r) => `
+      <div class="list-item" style="cursor:default">
+        <div class="grow"><div class="name">${r.date}</div></div>
+        <span class="badge ${r.status === 'present' ? 'active' : r.status === 'late' ? 'grace' : 'expired'}">${ST[r.status]}${r.status === 'late' && r.late_minutes ? ' ' + r.late_minutes + ' د' : ''}</span>
+      </div>`).join('') : '<div class="empty">لسه مفيش تسجيل</div>'}
+    <p class="note">الإدارة هي اللي بتسجل - الشاشة دي للعرض بس.</p>`;
+}
+
 // ---------------- Staff (الجهاز الفني والإداري) ----------------
 const STAFF_STATUS = { present: 'حاضر', absent: 'غائب', late: 'متأخر' };
 async function renderStaff() {
@@ -1204,6 +1229,7 @@ const routes = {
   '/messages': renderMessages,
   '/expenses': renderExpenses,
   '/staff': renderStaff,
+  '/my-att': renderMyAttendance,
   '/settings': renderSettings
 };
 async function route() {
