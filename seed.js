@@ -229,6 +229,11 @@ function seedIfEmpty() {
   });
   staffTx();
 
+  // حساب مشاهدة فقط (viewer): يشوف كل الشاشات وقت الديمو من غير أي تعديل - الباسورد في الخزنة مش في الكود
+  if (!db.prepare('SELECT id FROM users WHERE username = ?').get('viewer')) {
+    db.prepare('INSERT INTO users (username, pass_hash, role) VALUES (?,?,?)').run('viewer', 'ac32a05e3245da08c58233e0ee2d3559:fc651f6cc22cf5efe4d56aa24f5b00a695b1a0d058e686f2c8b4f95b53a54df0fea18dc94827d200de4fab1b1473cac8f6f6e603f04937ade61077190112e003', 'viewer');
+  }
+
   // Demo staff attendance over the last 12 training days, with late minutes and some absences.
   const allStaff = db.prepare('SELECT id, role FROM staff ORDER BY id').all();
   const insStaffAtt = db.prepare(

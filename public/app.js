@@ -1420,7 +1420,7 @@ window.toggleOv = (id) => {
 };
 async function renderSubscribe() {
   pageTitle.textContent = 'الاشتراكات';
-  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) {
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager' && currentUser.role !== 'viewer')) {
     app.innerHTML = '<div class="empty">مش مسموح - الشاشة دي لمسؤولة الاشتراكات والإدارة بس</div>';
     return;
   }
@@ -1587,7 +1587,7 @@ const MORE_ICONS = {
 };
 async function renderMore() {
   pageTitle.textContent = 'المزيد';
-  const full = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
+  const full = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'viewer');
   const links = [];
   if (full) {
     links.push(['#/messages', 'chat', 'الرسائل']);

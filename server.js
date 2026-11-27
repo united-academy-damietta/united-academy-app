@@ -54,6 +54,13 @@ app.get('/api/me', (req, res) => {
 
 // everything below requires a logged-in user
 app.use('/api', auth.requireAuth);
+// حساب المشاهدة (viewer): قراءة بس - أي محاولة كتابة مرفوضة من السيرفر
+app.use('/api', (req, res, next) => {
+  if (req.user && req.user.role === 'viewer' && req.method !== 'GET') {
+    return res.status(403).json({ error: 'حساب مشاهدة فقط - ممنوع أي إضافة أو تعديل أو حفظ' });
+  }
+  next();
+});
 
 const asyncWrap = (fn) => (req, res) => {
   try {
@@ -66,6 +73,7 @@ const asyncWrap = (fn) => (req, res) => {
 
 function requireFull(req, res) {
   if (req.user.role === 'admin' || req.user.role === 'manager') return true;
+  if (req.method === 'GET' && req.user.role === 'viewer') return true; // المشاهد يقرأ كل الشاشات (بيانات تجريبية) - الكتابة محظورة فوق
   res.status(403).json({ error: 'مش مسموح' });
   return false;
 }
