@@ -1027,15 +1027,18 @@ async function renderStaff() {
   const today = todayLocal();
   app.innerHTML = `
     <input type="date" id="st-date" value="${today}" />
+    <div id="staff-savebar"></div>
     <div id="staff-body"></div>
     <div id="staff-month"></div>
     <div id="staff-add"></div>`;
-  // ملخص الشهر لكل عضو جهاز: حضور/غياب/تأخير + مدة التأخير بالدقائق
-  try {
-    const sm = await api('/staff/month');
-    document.getElementById('staff-month').innerHTML = `
-      <h2 class="section">ملخص الشهر - الجهاز (حضور / غياب / مدة التأخير)</h2>
-      ${sm.staff.map((s) => `
+  // تقرير آخر الشهر لكل فرد في الجهاز: حضور/غياب/تأخير - بيتحسب من الأيام المحفوظة بتواريخها
+  async function loadMonth(month) {
+    try {
+      const sm = await api('/staff/month?month=' + month);
+      document.getElementById('staff-month').innerHTML = `
+        <h2 class="section">📊 تقرير الشهر - حضور وغياب وتأخير كل فرد في الجهاز</h2>
+        <input type="month" id="st-month" value="${sm.month}" style="margin-bottom:10px" />
+        ${sm.staff.map((s) => `
         <div class="list-item" style="cursor:default">
           <div class="grow">
             <div class="name">${esc(s.name)}</div>
@@ -1045,7 +1048,10 @@ async function renderStaff() {
           <span class="badge expired">❌ ${s.absent}</span>
           <span class="badge grace">⏰ ${s.late_minutes} د (${s.late})</span>
         </div>`).join('')}`;
-  } catch (e) {}
+      document.getElementById('st-month').onchange = (e) => loadMonth(e.target.value);
+    } catch (e) {}
+  }
+  loadMonth(today.slice(0, 7));
   const canEdit = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
   async function load(date) {
     const d = await api('/staff?date=' + date);
@@ -1068,36 +1074,57 @@ async function renderStaff() {
         (m.status ? `<span class="badge ${m.status === 'present' ? 'active' : m.status === 'late' ? 'grace' : 'expired'}">${m.status === 'present' ? 'حاضر' : m.status === 'late' ? 'متأخر' : 'غائب'}${m.status === 'late' && m.late_minutes ? ' ' + m.late_minutes + ' د' : ''}</span>` : '<span class="note">-</span>')}
       </div>`).join('') : '<div class="empty">مفيش أعضاء جهاز</div>';
     if (canEdit) {
-      document.querySelectorAll('#staff-body .toggle-pill button').forEach((b) => {
-        b.onclick = async () => {
-          const body = { staff_id: b.dataset.sid, date, status: b.dataset.val };
-          if (b.dataset.val === 'late') {
-            const inp = document.querySelector(`.late-input[data-sid="${b.dataset.sid}"]`);
-            body.late_minutes = inp ? (parseInt(inp.value, 10) || 0) : 0;
+      // التسجيل بيتحفظ مرة واحدة بزرار "تأكيد حفظ اليوم" عشان اليوم يتقفل بتاريخه
+      const cleared = new Set();
+      const savedStatus = {};
+      document.querySelectorAll('#staff-body .list-item').forEach((row) => {
+        const btn = row.querySelector('.toggle-pill button[class*="on-"]');
+        if (btn) savedStatus[btn.dataset.sid] = btn.dataset.val;
+      });
+      function refreshSaveBar() {
+        const marked = document.querySelectorAll('#staff-body .toggle-pill button[class*="on-"]').length;
+        const bar = document.getElementById('staff-savebar');
+        bar.innerHTML = `<button class="btn block" id="day-save">💾 تأكيد حفظ يوم ${date} (${marked} تسجيل)</button>`;
+        document.getElementById('day-save').onclick = async () => {
+          const recs = [];
+          document.querySelectorAll('#staff-body .list-item').forEach((row) => {
+            const on = row.querySelector('.toggle-pill button[class*="on-"]');
+            if (!on) return;
+            const inp = row.querySelector('.late-input');
+            recs.push({ staff_id: on.dataset.sid, date, status: on.dataset.val,
+              late_minutes: on.dataset.val === 'late' ? (parseInt(inp && inp.value, 10) || 0) : 0 });
+          });
+          for (const sid of cleared) {
+            if (savedStatus[sid]) recs.push({ staff_id: sid, date, status: null });
           }
-          await api('/staff-attendance', { body });
+          document.getElementById('day-save').disabled = true;
+          for (const r of recs) await api('/staff-attendance', { body: r });
+          toast(`اتحفظ يوم ${date} ✔ (${recs.length} تسجيل بتاريخه)`);
+          loadMonth(document.getElementById('st-month') ? document.getElementById('st-month').value : date.slice(0, 7));
           load(date);
+        };
+      }
+      document.querySelectorAll('#staff-body .toggle-pill button').forEach((b) => {
+        b.onclick = () => {
+          const pill = b.closest('.toggle-pill');
+          pill.querySelectorAll('button').forEach((x) => x.classList.remove('on-present', 'on-absent', 'on-late'));
+          b.classList.add(b.dataset.val === 'present' ? 'on-present' : b.dataset.val === 'absent' ? 'on-absent' : 'on-late');
+          cleared.delete(b.dataset.sid);
+          refreshSaveBar();
         };
       });
-      // عدّل دقائق التأخير لأي حد متسجل متأخر من غير ما تعيد ضغط الزر
       document.querySelectorAll('.late-input').forEach((inp) => {
-        inp.onchange = async () => {
-          const sid = inp.dataset.sid;
-          const row = inp.closest('.list-item');
-          const isLate = row.querySelector('.toggle-pill button[data-val="late"]').classList.contains('on-late');
-          if (!isLate) return;
-          await api('/staff-attendance', { body: { staff_id: sid, date, status: 'late', late_minutes: parseInt(inp.value, 10) || 0 } });
-          toast('اتحفظت دقائق التأخير ✅');
-          load(date);
-        };
+        inp.onchange = () => refreshSaveBar();
       });
       document.querySelectorAll('.staff-clear').forEach((b) => {
-        b.onclick = async () => {
-          await api('/staff-attendance', { body: { staff_id: b.dataset.sid, date, status: null } });
-          toast('اتمسح التسجيل');
-          load(date);
+        b.onclick = () => {
+          const row = b.closest('.list-item');
+          row.querySelectorAll('.toggle-pill button').forEach((x) => x.classList.remove('on-present', 'on-absent', 'on-late'));
+          cleared.add(b.dataset.sid);
+          refreshSaveBar();
         };
       });
+      refreshSaveBar();
     }
     if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager')) {
       document.getElementById('staff-add').innerHTML = `
