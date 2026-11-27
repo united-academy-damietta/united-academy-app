@@ -124,6 +124,14 @@ CREATE TABLE IF NOT EXISTS announcements (
 );
 `);
 
+// أعمدة بتتضاف بالترقية من غير كسر القواعد القديمة
+function ensureColumn(table, col, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes(col)) db.prepare(`ALTER TABLE ${table} ADD COLUMN ${ddl}`).run();
+}
+ensureColumn('players', 'membership_no', 'membership_no TEXT'); // رقم عضوية نادي المستقبل
+ensureColumn('subscriptions', 'kind', "kind TEXT NOT NULL DEFAULT 'academy'"); // academy | mustaqbal
+
 const DEFAULTS = {
   training_days: '[0,2,4]', // Sunday, Tuesday, Thursday
   grace_days: '7',

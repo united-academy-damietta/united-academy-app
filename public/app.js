@@ -446,6 +446,7 @@ async function renderPlayer(id) {
       <div class="kv"><span class="k">ولي الأمر</span><span>${esc(p.parent_name || '-')}</span></div>
       <div class="kv"><span class="k">واتساب</span><span>${esc(p.parent_phone || '-')}</span></div>
       <div class="kv"><span class="k">تاريخ الميلاد</span><span>${esc(p.birth_date || '-')}</span></div>
+      ${p.membership_no ? `<div class="kv"><span class="k">رقم العضوية (نادي المستقبل)</span><span>${esc(p.membership_no)}</span></div>` : ''}
       ${hideSub ? '' : (p.subscription ? `
       <div class="kv"><span class="k">الاشتراك الحالي</span><span>${p.subscription.start_date} ← ${p.subscription.end_date}</span></div>
       ${p.subscription.amount !== null && p.subscription.amount !== undefined ? `<div class="kv"><span class="k">المبلغ</span><span>${p.subscription.amount} جنيه / ${p.subscription.months} شهر</span></div>` : ''}` :
@@ -664,7 +665,7 @@ function dropoutRows(dropouts) {
     <div class="list-item" style="cursor:default">
       <div class="grow">
         <div class="name">${esc(p.name)}${p.squad ? ' - ' + esc(p.squad) : ''}</div>
-        <div class="sub">تاريخ الميلاد: ${esc(p.birth_date || '-')} • ولي الأمر: ${esc(p.parent_name || '-')} ${p.parent_phone ? `<a href="tel:${esc(p.parent_phone)}">${esc(p.parent_phone)}</a>` : ''}</div>
+        <div class="sub">تاريخ الميلاد: ${esc(p.birth_date || '-')} • ولي الأمر: ${esc(p.parent_name || '-')} ${p.parent_phone ? `<a href="tel:${esc(p.parent_phone)}">${esc(p.parent_phone)}</a>` : ''}</div>${p.membership_no ? ` <span class="badge">عضوية مستقبل: ${esc(p.membership_no)}</span>` : ''}
       </div>
       <span class="badge expired">آخر حضور ${p.last_present} (من ${p.since_days} يوم)</span>
     </div>`).join('');
@@ -1339,14 +1340,22 @@ async function renderTrainingDay() {
 }
 
 // ---------------- New subscriber registration (admin/manager only) ----------------
+window.toggleOv = (id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const opening = el.style.display === 'none';
+  el.style.display = opening ? '' : 'none';
+  if (opening) el.scrollIntoView({ behavior: 'smooth' });
+};
 async function renderSubscribe() {
-  pageTitle.textContent = 'تسجيل اشتراك جديد';
+  pageTitle.textContent = 'الاشتراكات';
   if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) {
     app.innerHTML = '<div class="empty">مش مسموح - الشاشة دي لمسؤولة الاشتراكات والإدارة بس</div>';
     return;
   }
   const plans = await api('/plans');
   const items = await api('/subscription-items');
+  const overview = await api('/subscriptions/overview');
   window._subItems = items;
   const planOpts = Object.entries(plans).map(([k, v]) =>
     `<option value="${k}">${v.label} - ${v.amount} جنيه</option>`).join('');
@@ -1355,7 +1364,33 @@ async function renderSubscribe() {
       <label style="margin:0;display:flex;align-items:center;gap:6px"><input type="checkbox" class="r-item" data-id="${it.id}" /> ${esc(it.label)}</label>
       <span><input type="number" min="0" class="r-item-amt" data-id="${it.id}" value="${it.amount || ''}" placeholder="المبلغ" style="width:100px" /> جنيه</span>
     </div>`).join('');
+  const ovCard = (key, num, label) => `
+      <div class="card stat" style="cursor:pointer" onclick="toggleOv('ov-${key}')"><div class="num">${num}</div><div class="lbl">${label}</div></div>`;
+  const ovList = (key, arr, withEnd) => `
+    <div id="ov-${key}" style="display:none">
+    ${arr.length ? arr.map((p) => `
+      <div class="list-item" onclick="location.hash='#/player/${p.id}'">
+        <div class="grow">
+          <div class="name">${esc(p.name)}</div>
+          <div class="sub">${withEnd && p.end_date ? 'اشتراكه بينتهي ' + p.end_date + ' • ' : ''}${p.parent_phone ? `<a href="tel:${esc(p.parent_phone)}" onclick="event.stopPropagation()">${esc(p.parent_phone)}</a>` : 'بدون رقم'}</div>
+        </div>
+      </div>`).join('') : '<div class="empty">مفيش لاعبين هنا</div>'}
+    </div>`;
   app.innerHTML = `
+    <div class="grid">
+      ${ovCard('m1', overview.m1.length, 'اشتراك شهري')}
+      ${ovCard('m3', overview.m3.length, 'اشتراك 3 شهور')}
+      ${ovCard('m6', overview.m6.length, 'اشتراك 6 شهور')}
+      ${ovCard('m12', overview.m12.length, 'اشتراك سنوي')}
+      ${ovCard('mustaqbal', overview.mustaqbal.length, 'أعضاء نادي المستقبل')}
+      ${ovCard('kit', overview.kit.length, 'اشتركوا في الزي 👕')}
+    </div>
+    ${ovList('m1', overview.m1, true)}
+    ${ovList('m3', overview.m3, true)}
+    ${ovList('m6', overview.m6, true)}
+    ${ovList('m12', overview.m12, true)}
+    ${ovList('mustaqbal', overview.mustaqbal, true)}
+    ${ovList('kit', overview.kit, false)}
     <div class="card">
       <h2 class="section" style="margin-top:0">بيانات اللاعب الجديد</h2>
       <label>اسم اللاعب *</label><input id="r-name" />
@@ -1366,6 +1401,7 @@ async function renderSubscribe() {
       <select id="r-age"><option>تحت 8</option><option selected>تحت 10</option><option>تحت 12</option><option>تحت 14</option><option>تحت 16</option></select>
       <label>الفرقة</label>
       <select id="r-squad"><option value="">-</option><option>كيدز 2019-2021</option><option>2017-2018</option><option>2015-2016</option><option>2013-2014</option><option>حراس</option></select>
+      <label>رقم العضوية (أعضاء نادي المستقبل)</label><input id="r-membership" inputmode="numeric" placeholder="اختياري" />
       <label>ملاحظات</label><input id="r-notes" />
     </div>
     <div class="card">
@@ -1374,7 +1410,7 @@ async function renderSubscribe() {
       <div id="r-academy-box">
         <label>تاريخ البداية</label><input id="r-start" type="date" value="${todayLocal()}" />
         <label>خطة الاشتراك</label>
-        <select id="r-plan">${planOpts}<option value="custom">مخصص</option></select>
+        <select id="r-plan">${planOpts}<option value="mustaqbal">أعضاء نادي المستقبل - سعر متغير</option><option value="custom">مخصص</option></select>
         <div id="r-custom" class="hidden">
           <label>المدة (شهور)</label><input id="r-months" type="number" min="1" value="1" />
           <label>المبلغ (جنيه)</label><input id="r-amount" type="number" min="0" value="700" />
@@ -1392,7 +1428,7 @@ async function renderSubscribe() {
     const academy = document.getElementById('r-academy').checked;
     document.getElementById('r-academy-box').classList.toggle('hidden', !academy);
     const plan = document.getElementById('r-plan').value;
-    document.getElementById('r-custom').classList.toggle('hidden', plan !== 'custom');
+    document.getElementById('r-custom').classList.toggle('hidden', plan !== 'custom' && plan !== 'mustaqbal');
     const parts = [];
     if (academy) {
       const months = plan === 'custom' ? (parseInt(document.getElementById('r-months').value, 10) || 1) : plans[plan].months;
@@ -1422,11 +1458,16 @@ async function renderSubscribe() {
         birth_date: document.getElementById('r-birth').value || null,
         age_group: document.getElementById('r-age').value,
         squad: document.getElementById('r-squad').value || null,
+        membership_no: document.getElementById('r-membership').value || null,
         notes: document.getElementById('r-notes').value,
         start_date: document.getElementById('r-start').value
       };
       if (document.getElementById('r-academy').checked) {
         if (plan === 'custom') {
+          body.months = document.getElementById('r-months').value;
+          body.amount = document.getElementById('r-amount').value;
+        } else if (plan === 'mustaqbal') {
+          body.plan = 'mustaqbal';
           body.months = document.getElementById('r-months').value;
           body.amount = document.getElementById('r-amount').value;
         } else {
@@ -1510,5 +1551,13 @@ async function route() {
     app.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
 }
+// ضغطة "الرئيسية" ترجع لفوق الصفحة بسكرول سلس حتى لو إحنا فيها أصلًا
+document.querySelectorAll('#bottomnav a').forEach((a) => {
+  a.addEventListener('click', () => {
+    if (a.dataset.route === '/') {
+      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
+    }
+  });
+});
 window.addEventListener('hashchange', route);
 route();

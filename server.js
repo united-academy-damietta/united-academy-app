@@ -274,12 +274,13 @@ app.get('/api/players', asyncWrap((req, res) => {
 
 app.post('/api/players', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
-  const { name, parent_name, parent_phone, age_group, notes, birth_date, squad } = req.body || {};
+  const { name, parent_name, parent_phone, age_group, notes, birth_date, squad, membership_no } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'اسم اللاعب مطلوب' });
   const info = db.prepare(
-    `INSERT INTO players (name, parent_name, parent_phone, age_group, notes, birth_date, squad) VALUES (?,?,?,?,?,?,?)`
+    `INSERT INTO players (name, parent_name, parent_phone, age_group, notes, birth_date, squad, membership_no) VALUES (?,?,?,?,?,?,?,?)`
   ).run(String(name).trim(), parent_name || null, parent_phone || null, age_group || null, notes || null,
-    /^\d{4}-\d{2}-\d{2}$/.test(String(birth_date || '')) ? birth_date : null, squad || null);
+    /^\d{4}-\d{2}-\d{2}$/.test(String(birth_date || '')) ? birth_date : null, squad || null,
+    membership_no ? String(membership_no).trim() : null);
   res.status(201).json(decoratePlayer(db.prepare('SELECT * FROM players WHERE id=?').get(info.lastInsertRowid), todayCairo()));
 }));
 
@@ -357,9 +358,9 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
   const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id);
   if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
-  const { name, parent_name, parent_phone, age_group, notes, status, birth_date } = req.body || {};
+  const { name, parent_name, parent_phone, age_group, notes, status, birth_date, membership_no } = req.body || {};
   db.prepare(
-    `UPDATE players SET name=?, parent_name=?, parent_phone=?, age_group=?, notes=?, status=?, birth_date=? WHERE id=?`
+    `UPDATE players SET name=?, parent_name=?, parent_phone=?, age_group=?, notes=?, status=?, birth_date=?, membership_no=? WHERE id=?`
   ).run(
     name !== undefined ? name : p.name,
     parent_name !== undefined ? parent_name : p.parent_name,
@@ -368,6 +369,7 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
     notes !== undefined ? notes : p.notes,
     status !== undefined ? status : p.status,
     birth_date !== undefined ? (/^\d{4}-\d{2}-\d{2}$/.test(String(birth_date)) ? birth_date : null) : p.birth_date,
+    membership_no !== undefined ? (membership_no ? String(membership_no).trim() : null) : p.membership_no,
     p.id
   );
   res.json(decoratePlayer(db.prepare('SELECT * FROM players WHERE id=?').get(p.id), todayCairo()));
@@ -375,6 +377,32 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
 
 // ---------- subscriptions ----------
 app.get('/api/plans', asyncWrap((req, res) => res.json(getPlans())));
+
+// كروت الاشتراكات: عدد اللاعبين حسب نوع الاشتراك + قائمة كل نوع (إدارة بس، المدرب 403)
+app.get('/api/subscriptions/overview', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const latest = db.prepare(
+    `SELECT s.*, p.name, p.parent_phone, p.status AS player_status FROM subscriptions s
+     JOIN players p ON p.id = s.player_id
+     WHERE s.id = (SELECT id FROM subscriptions WHERE player_id = s.player_id ORDER BY end_date DESC, id DESC LIMIT 1)
+       AND p.status = 'active'`
+  ).all();
+  const slim = (r) => ({ id: r.player_id, name: r.name, end_date: r.end_date, parent_phone: r.parent_phone });
+  const byMonths = (m) => latest.filter((r) => r.kind !== 'mustaqbal' && r.months === m).map(slim);
+  const kitRows = db.prepare(
+    `SELECT DISTINCT p.id, p.name, p.parent_phone FROM payments y
+     JOIN subscription_items i ON i.id = y.item_id AND i.item_key = 'kit'
+     JOIN players p ON p.id = y.player_id AND p.status = 'active'`
+  ).all().map((r) => ({ id: r.id, name: r.name, parent_phone: r.parent_phone, end_date: null }));
+  res.json({
+    m1: byMonths(1),
+    m3: byMonths(3),
+    m6: byMonths(6),
+    m12: byMonths(12),
+    mustaqbal: latest.filter((r) => r.kind === 'mustaqbal').map(slim),
+    kit: kitRows
+  });
+}));
 
 // النسخ الاحتياطي (إدارة بس): الحالة + تشغيل يدوي. الرفع على Drive مقفول لحد موافقة أحمد.
 app.get('/api/backup/status', asyncWrap((req, res) => {
@@ -439,13 +467,14 @@ app.post('/api/players/:id/subscriptions', asyncWrap((req, res) => {
   const today = todayCairo();
   const start = (req.body && req.body.start_date) || today;
   const planKey = req.body && req.body.plan;
+  const isMustaqbal = String(planKey) === 'mustaqbal';
   const plan = getPlans()[String(planKey)];
   const months = plan ? plan.months : (parseInt((req.body && req.body.months) || getSetting('sub_months'), 10) || 1);
   const amount = plan ? plan.amount : (Number((req.body && req.body.amount !== undefined ? req.body.amount : getSetting('sub_amount'))) || 0);
   const end = addMonths(start, months);
   const info = db.prepare(
-    `INSERT INTO subscriptions (player_id, start_date, months, amount, end_date) VALUES (?,?,?,?,?)`
-  ).run(p.id, start, months, amount, end);
+    `INSERT INTO subscriptions (player_id, start_date, months, amount, end_date, kind) VALUES (?,?,?,?,?,?)`
+  ).run(p.id, start, months, amount, end, isMustaqbal ? 'mustaqbal' : 'academy');
   const sub = db.prepare('SELECT * FROM subscriptions WHERE id=?').get(info.lastInsertRowid);
   automation.confirmationDraft(p.id, sub); // draft only - human sends it
   const payments = recordItemPayments(p.id, req.body && req.body.items, start);
@@ -460,21 +489,22 @@ app.post('/api/subscriptions/register', asyncWrap((req, res) => {
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: 'اسم اللاعب مطلوب' });
   const pinfo = db.prepare(
-    `INSERT INTO players (name, parent_name, parent_phone, age_group, notes, birth_date, squad) VALUES (?,?,?,?,?,?,?)`
+    `INSERT INTO players (name, parent_name, parent_phone, age_group, notes, birth_date, squad, membership_no) VALUES (?,?,?,?,?,?,?,?)`
   ).run(name, b.parent_name || null, b.parent_phone || null, b.age_group || null, b.notes || null,
-    /^\d{4}-\d{2}-\d{2}$/.test(String(b.birth_date || '')) ? b.birth_date : null, b.squad || null);
+    /^\d{4}-\d{2}-\d{2}$/.test(String(b.birth_date || '')) ? b.birth_date : null, b.squad || null,
+    b.membership_no ? String(b.membership_no).trim() : null);
   const pid = pinfo.lastInsertRowid;
   const today = todayCairo();
   const start = /^\d{4}-\d{2}-\d{2}$/.test(String(b.start_date || '')) ? b.start_date : today;
   const plan = getPlans()[String(b.plan)];
   let sub = null;
-  if (plan || b.months !== undefined || b.amount !== undefined) { // اشتراك الأكاديمية اختياري لو فيه بنود تانية بس
+  if (plan || b.months !== undefined || b.amount !== undefined || String(b.plan) === 'mustaqbal') { // اشتراك الأكاديمية اختياري لو فيه بنود تانية بس
     const months = plan ? plan.months : (parseInt(b.months, 10) || 1);
     const amount = plan ? plan.amount : (Number(b.amount) || 0);
     const end = addMonths(start, months);
     const sinfo = db.prepare(
-      `INSERT INTO subscriptions (player_id, start_date, months, amount, end_date) VALUES (?,?,?,?,?)`
-    ).run(pid, start, months, amount, end);
+      `INSERT INTO subscriptions (player_id, start_date, months, amount, end_date, kind) VALUES (?,?,?,?,?,?)`
+    ).run(pid, start, months, amount, end, String(b.plan) === 'mustaqbal' ? 'mustaqbal' : 'academy');
     sub = db.prepare('SELECT * FROM subscriptions WHERE id=?').get(sinfo.lastInsertRowid);
     automation.confirmationDraft(pid, sub); // draft only - human sends it
   }
