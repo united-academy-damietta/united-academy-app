@@ -119,6 +119,30 @@ document.getElementById('modal-backdrop').addEventListener('click', (e) => {
 });
 
 // ---------------- Dashboard ----------------
+// Announcement helpers: WhatsApp text + clipboard copy.
+function annWaText(a) {
+  const lines = ['📢 إعلان من يونايتد أكاديمي', a.kind + (a.event_date ? ' - يوم ' + a.event_date : '')];
+  if (a.details) lines.push(a.details);
+  lines.push('للاستفسار: 01030441104');
+  return lines.join('\n');
+}
+function copyText(t) {
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t);
+  const ta = document.createElement('textarea');
+  ta.value = t; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  return Promise.resolve();
+}
+function announcementCard(a, withCopy) {
+  return `<div class="list-item" style="cursor:default">
+    <div class="grow">
+      <div class="name">📢 ${esc(a.kind)}${a.event_date ? ' - ' + esc(a.event_date) : ''}</div>
+      <div class="sub">${esc(a.details || '')}${a.created_by ? ' • ' + esc(a.created_by) : ''}</div>
+    </div>
+    ${withCopy ? `<button class="btn small" data-ann-copy="${a.id}">📋 نسخ رسالة واتساب</button>` : ''}
+  </div>`;
+}
+
 async function renderDashboard() {
   pageTitle.textContent = 'لوحة التحكم';
   const d = await api('/dashboard');
@@ -139,6 +163,7 @@ async function renderDashboard() {
       <div class="card stat"><div class="num">${d.present_today}/${d.players_total}</div><div class="lbl">حضور النهاردة${d.is_training_day ? '' : ' (مفيش تدريب)'}</div></div>
     </div>
     <div class="btn-row"><a class="btn block" href="#/attendance">✅ تسجيل حضور النهاردة</a></div>
+    ${(d.announcements && d.announcements.length) ? '<h2 class="section">📢 إعلانات الأكاديمي</h2>' + d.announcements.map((a) => announcementCard(a, false)).join('') : ''}
     <h2 class="section">أكتر اللاعبين حضورًا الشهر ده</h2>
     ${topAttendeeRows(m.top_attendees)}
     <div id="my-att"></div>
@@ -203,6 +228,19 @@ async function renderDashboard() {
         </div>
         <button class="btn small" data-bday="${p.id}">🎉 جهز تهنئة</button>
       </div>`).join('') : '<div class="empty">مفيش أعياد ميلاد الأسبوع ده</div>'}
+    <h2 class="section">📢 إعلان تغيير التمرين والإعلانات</h2>
+    <div class="list-item" style="cursor:default">
+      <div class="grow" style="display:flex; flex-direction:column; gap:8px">
+        <select id="ann-kind">
+          <option>إلغاء تمرين</option><option>تغيير ميعاد</option><option>تغيير ملعب</option>
+          <option>مباراة ودية</option><option>تجمع</option><option>بطولة</option><option>أخرى</option>
+        </select>
+        <input type="date" id="ann-date" />
+        <input type="text" id="ann-details" placeholder="مثال: تمرين الخميس هيبقى الساعة 6 بدل 5 بسبب الحر" />
+        <button class="btn small" id="ann-add">📢 أضف إعلان</button>
+      </div>
+    </div>
+    ${(d.announcements || []).map((a) => announcementCard(a, true)).join('') || '<div class="empty">مفيش إعلانات لسه</div>'}
     <div class="btn-row">
       <a class="btn secondary" href="#/messages">الرسائل الجاهزة (${d.draft_messages})</a>
       <button class="btn" id="gen-btn">تحديث التذكيرات</button>
@@ -212,6 +250,25 @@ async function renderDashboard() {
     toast(`اتعمل ${r.renewals} تذكير جديد`);
     renderDashboard();
   };
+  document.getElementById('ann-add').onclick = async () => {
+    const details = document.getElementById('ann-details').value.trim();
+    if (!details) { toast('اكتب تفاصيل الإعلان'); return; }
+    await api('/announcements', { body: {
+      kind: document.getElementById('ann-kind').value,
+      event_date: document.getElementById('ann-date').value || null,
+      details
+    } });
+    toast('الإعلان اتنشر 📢');
+    renderDashboard();
+  };
+  document.querySelectorAll('[data-ann-copy]').forEach((btn) => {
+    btn.onclick = async () => {
+      const a = (d.announcements || []).find((x) => String(x.id) === btn.dataset.annCopy);
+      if (!a) return;
+      await copyText(annWaText(a));
+      toast('رسالة الواتساب اتنسخت - ابعتها من واتساب الأكاديمي 📋');
+    };
+  });
   document.querySelectorAll('[data-bday]').forEach((btn) => {
     btn.onclick = async () => {
       btn.disabled = true;

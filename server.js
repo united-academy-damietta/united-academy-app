@@ -182,10 +182,12 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
       })
       .sort((a, b) => a.birth_date.slice(5).localeCompare(b.birth_date.slice(5)));
   }
+  const announcements = db.prepare('SELECT * FROM announcements ORDER BY id DESC LIMIT 10').all();
   res.json({
     today,
     at_risk: atRisk,
     birthdays_week: birthdaysWeek,
+    announcements,
     is_training_day: JSON.parse(getSetting('training_days')).includes(new Date(today + 'T12:00:00Z').getUTCDay()),
     players_total: players.length,
     subs_active: isCoach ? null : activeSubs.length,
@@ -543,6 +545,22 @@ app.post('/api/messages/generate', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
   const r = automation.runDaily();
   res.json(r);
+}));
+
+// Training announcements (e.g. session change/cancel): admin/manager create; everyone reads.
+const ANN_KINDS = ['إلغاء تمرين', 'تغيير ميعاد', 'تغيير ملعب', 'مباراة ودية', 'تجمع', 'بطولة', 'أخرى'];
+app.post('/api/announcements', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const kind = ANN_KINDS.includes(req.body && req.body.kind) ? req.body.kind : 'أخرى';
+  const details = String((req.body && req.body.details) || '').trim().slice(0, 500);
+  const eventDate = /^\d{4}-\d{2}-\d{2}$/.test(String((req.body && req.body.event_date) || ''))
+    ? req.body.event_date : null;
+  if (!details) return res.status(400).json({ error: 'اكتب تفاصيل الإعلان' });
+  const staffRow = db.prepare('SELECT name FROM staff WHERE user_id = ?').get(req.user.id);
+  const by = staffRow ? staffRow.name : req.user.username;
+  const r = db.prepare('INSERT INTO announcements (kind, details, event_date, created_by) VALUES (?,?,?,?)')
+    .run(kind, details, eventDate, by);
+  res.json(db.prepare('SELECT * FROM announcements WHERE id = ?').get(r.lastInsertRowid));
 }));
 
 // Birthday greeting: creates a draft only - a human sends it from Messages.

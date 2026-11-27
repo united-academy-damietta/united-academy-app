@@ -238,6 +238,9 @@ function seedIfEmpty() {
   insEval.run(demoIds[1], lastMonth, 4, 4, 4, 4, '', 'ك شهد');
   insEval.run(demoIds[2], lastMonth, 3, 4, 3, 4, 'لياقته محتاجة تتحسن', 'ك شهد');
   insEval.run(demoIds[3], lastMonth, 5, 5, 4, 5, 'موهبة واضحة', 'ك شهد');
+  // Sample announcement so the announcements box shows realistic content.
+  db.prepare('INSERT INTO announcements (kind, details, event_date, created_by, created_at) VALUES (?,?,?,?,?)')
+    .run('تغيير ميعاد', 'تمرين يوم الخميس الجاي هيبقى الساعة 6 بدل 5 عشان امتحانات نص السنة', addDays(today, 7), 'أ مريم المصري', addDays(today, -1) + ' 12:00:00');
   const insContact = db.prepare(
     'INSERT INTO contact_log (player_id, type, note, staff_name, created_at) VALUES (?,?,?,?,?)'
   );
