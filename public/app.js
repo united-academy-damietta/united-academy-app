@@ -164,6 +164,13 @@ async function renderDashboard() {
     </div>
     <div class="btn-row"><a class="btn block" href="#/attendance">✅ تسجيل حضور النهاردة</a></div>
     ${(d.announcements && d.announcements.length) ? '<h2 class="section">📢 إعلانات الأكاديمي</h2>' + d.announcements.map((a) => announcementCard(a, false)).join('') : ''}
+    ${(d.birthdays_week && d.birthdays_week.length) ? '<h2 class="section">🎂 أعياد ميلاد الأسبوع في مجموعتك (' + d.birthdays_week.length + ')</h2>' + d.birthdays_week.map((p) => `
+      <div class="list-item" style="cursor:default">
+        <div class="grow">
+          <div class="name">${esc(p.name)}</div>
+          <div class="sub">هيكمل ${p.turns} سنة يوم ${p.date_this_year}</div>
+        </div>
+      </div>`).join('') : ''}
     <h2 class="section">أكتر اللاعبين حضورًا الشهر ده</h2>
     ${topAttendeeRows(m.top_attendees)}
     <div id="my-att"></div>
@@ -178,8 +185,17 @@ async function renderDashboard() {
       const mine = await api('/my-attendance');
       if (mine.linked) {
         const ST = { present: '✅ حاضر', absent: '❌ غائب', late: '⏰ متأخر' };
+        const AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
         document.getElementById('my-att').innerHTML = `
-          <h2 class="section">حضوري أنا الشهر ده</h2>
+          <h2 class="section">حضوري وتأخيري كل شهر (السنة دي)</h2>
+          ${(mine.months || []).length ? mine.months.map((mo) => `
+            <div class="list-item" style="cursor:default">
+              <div class="grow">
+                <div class="name">${AR_MONTHS[Number(mo.ym.slice(5)) - 1]} ${mo.ym.slice(0, 4)}</div>
+                <div class="sub">✅ حضور ${mo.present} يوم${mo.absent ? ' • ❌ غياب ' + mo.absent : ''}${mo.late ? ' • ⏰ تأخير ' + mo.late + ' (' + mo.late_minutes + ' د)' : ''}</div>
+              </div>
+            </div>`).join('') : '<div class="empty">لسه مفيش تسجيل السنة دي</div>'}
+          <h2 class="section">حضوري أنا الشهر ده بالتفصيل</h2>
           <div class="grid">
             <div class="card stat"><div class="num">${mine.totals.absent}</div><div class="lbl">مرة غياب</div></div>
             <div class="card stat"><div class="num">${mine.totals.late_minutes}</div><div class="lbl">دقيقة تأخير</div></div>

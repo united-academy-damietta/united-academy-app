@@ -211,7 +211,7 @@ function seedIfEmpty() {
   const insStaffAtt = db.prepare(
     'INSERT OR IGNORE INTO staff_attendance (staff_id, date, status, late_minutes) VALUES (?,?,?,?)'
   );
-  const staffDays = trainingDates.slice(0, 12);
+  const staffDays = trainingDates.slice(0, 30);
   allStaff.forEach((s, si) => {
     staffDays.forEach((ds, di) => {
       if (si === 0 && di === 1) insStaffAtt.run(s.id, ds, 'late', 20); // ك شهد اتأخرت 20 دقيقة

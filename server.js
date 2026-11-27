@@ -161,9 +161,9 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
       .sort((a, b) => b.reasons.length - a.reasons.length)
       .slice(0, 50);
   }
-  // Players with a birthday in the coming 7 days (admin/manager).
+  // Players with a birthday in the coming 7 days (coaches see their own squad only).
   let birthdaysWeek = [];
-  if (!isCoach) {
+  {
     const window7 = [];
     for (let i = 0; i < 8; i++) window7.push(addDays(today, i).slice(5)); // MM-DD list
     birthdaysWeek = decorated
@@ -762,7 +762,17 @@ app.get('/api/my-attendance', asyncWrap((req, res) => {
     tot[r.status] = (tot[r.status] || 0) + 1;
     if (r.status === 'late') tot.late_minutes += r.late_minutes || 0;
   });
-  res.json({ linked: true, name: me.name, month: today.slice(0, 7), totals: tot, rows });
+  // Per-month totals for the whole current year (view-only summary).
+  const yearStart = today.slice(0, 4) + '-01-01';
+  const yearRows = db.prepare(
+    `SELECT substr(date, 1, 7) AS ym,
+            SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present,
+            SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) AS absent,
+            SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) AS late,
+            SUM(CASE WHEN status = 'late' THEN late_minutes ELSE 0 END) AS late_minutes
+     FROM staff_attendance WHERE staff_id = ? AND date >= ? GROUP BY ym ORDER BY ym DESC`
+  ).all(me.id, yearStart);
+  res.json({ linked: true, name: me.name, month: today.slice(0, 7), totals: tot, rows, months: yearRows });
 }));
 
 // ---------- coaches overview (full roles) ----------
