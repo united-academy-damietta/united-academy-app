@@ -114,7 +114,8 @@ const MSG_TYPES = {
   absence: 'تنبيه غياب',
   reminder_7d: 'تذكير تجديد',
   due: 'انتهاء اشتراك',
-  overdue: 'تجديد متأخر',
+  overdue: 'تجديد متأخر (سماح)',
+  late: 'تجديد متأخر',
   birthday: 'تهنئة عيد ميلاد'
 };
 
@@ -1068,6 +1069,7 @@ async function renderSettings() {
       <label>تذكير قبل الانتهاء بـ 7 أيام</label><textarea id="st-t3">${esc(s.tpl_reminder_7d)}</textarea>
       <label>يوم الانتهاء</label><textarea id="st-t4">${esc(s.tpl_due)}</textarea>
       <label>متأخر (فترة السماح)</label><textarea id="st-t5">${esc(s.tpl_overdue)}</textarea>
+      <label>متأخر (بعد انتهاء السماح)</label><textarea id="st-t6">${esc(s.tpl_late)}</textarea>
     </div>
     <button class="btn block" id="st-save">حفظ الإعدادات</button>
     <div class="card" style="margin-top:10px">
@@ -1235,7 +1237,8 @@ async function renderSettings() {
       tpl_absence: document.getElementById('st-t2').value,
       tpl_reminder_7d: document.getElementById('st-t3').value,
       tpl_due: document.getElementById('st-t4').value,
-      tpl_overdue: document.getElementById('st-t5').value
+      tpl_overdue: document.getElementById('st-t5').value,
+      tpl_late: document.getElementById('st-t6').value
     }});
     toast('اتحفظت الإعدادات ✅');
   };

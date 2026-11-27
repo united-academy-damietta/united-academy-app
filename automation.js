@@ -133,7 +133,7 @@ function renewalDraft(playerId, today) {
   if (daysLeft > 0 && daysLeft <= 7) { type = 'reminder_7d'; tpl = 'tpl_reminder_7d'; key = `r7:${p.id}:${sub.id}`; }
   else if (daysLeft === 0) { type = 'due'; tpl = 'tpl_due'; key = `due:${p.id}:${sub.id}`; }
   else if (daysLeft < 0 && daysLeft >= -grace) { type = 'overdue'; tpl = 'tpl_overdue'; key = `ovd:${p.id}:${sub.id}`; }
-  else { type = 'overdue'; tpl = 'tpl_overdue'; key = `ovd:${p.id}:${sub.id}:manual`; } // بعد السماح: رسالة متأخر يدوية منفصلة
+  else { type = 'late'; tpl = 'tpl_late'; key = `late:${p.id}:${sub.id}:manual`; } // بعد السماح: قالب المتأخر النهائي
   const body = fill(getSetting(tpl), baseVars(p, { end_date: sub.end_date, days: Math.abs(daysLeft) }));
   const created = createDraft(p, type, body, key);
   return { created, body };
