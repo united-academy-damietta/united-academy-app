@@ -173,10 +173,8 @@ async function renderDashboard() {
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
       <div class="card stat"><div class="num">${d.collected_month}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
-      <div class="card stat" id="att-card" style="cursor:pointer" title="اضغط لتفصيل المجموعات"><div class="num">${d.present_today} ✅ / ${d.absent_today} ❌</div><div class="lbl">حضور النهاردة - لسه ${d.players_total - d.present_today - d.absent_today} ما اتسجلش${d.is_training_day ? '' : ' (مفيش تدريب)'} - اضغط للتفصيل</div></div>
       <div class="card stat"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال السنة (الشهر ده: ${d.dropout_month})</div></div>
     </div>
-    <div id="squad-att" class="hidden"></div>
     <div id="coaches-box"></div>
     <h2 class="section">تجديدات مستنية (خلال 7 أيام أو متأخرة)</h2>
     ${d.renewals_due.length ? d.renewals_due.map((p) => `
@@ -196,25 +194,7 @@ async function renderDashboard() {
     toast(`اتعمل ${r.renewals} تذكير جديد`);
     renderDashboard();
   };
-  const attCard = document.getElementById('att-card');
-  if (attCard) attCard.onclick = () => {
-    const box = document.getElementById('squad-att');
-    const showing = !box.classList.contains('hidden');
-    if (showing) { box.classList.add('hidden'); return; }
-    box.innerHTML = `
-      <h2 class="section">حضور النهاردة حسب المجموعة</h2>
-      ${d.squad_attendance.length ? d.squad_attendance.map((s) => `
-        <div class="list-item" style="cursor:default">
-          <div class="grow">
-            <div class="name">${esc(s.squad || 'بدون مجموعة')}</div>
-            <div class="sub">${s.coaches.length ? esc(s.coaches.join('، ')) : ''}</div>
-          </div>
-          ${s.present === 0 && s.absent === 0
-            ? `<span class="badge grace">لسه ما اتسجلش (${s.total} لاعب)</span>`
-            : `<span class="badge active">✅ ${s.present}</span> <span class="badge expired">❌ ${s.absent}</span> <span class="badge none">من ${s.total}</span>`}
-        </div>`).join('') : '<div class="empty">لسه مفيش تسجيل النهاردة</div>'}`;
-    box.classList.remove('hidden');
-  };
+
   if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager')) {
     try {
       const f = await api('/finance');
@@ -957,8 +937,42 @@ async function renderStaff() {
   document.getElementById('st-date').onchange = (e) => load(e.target.value);
 }
 
+async function renderTrainingDay() {
+  pageTitle.textContent = 'يوم التدريب';
+  const [d, m] = await Promise.all([api('/api/dashboard'), api('/api/attendance/month')]);
+  const unmarked = d.players_total - d.present_today - d.absent_today;
+  const dropoutsBySquad = {};
+  (m.dropouts || []).forEach((p) => { const k = p.squad || ''; dropoutsBySquad[k] = (dropoutsBySquad[k] || 0) + 1; });
+  app.innerHTML = `
+    <h2 class="section">يوم التدريب - اللي بيحصل في الملعب دلوقتي${d.is_training_day ? '' : ' <span class="badge grace">مفيش تدريب النهاردة</span>'}</h2>
+    <div class="grid">
+      <div class="card stat"><div class="num">${d.present_today}</div><div class="lbl">حاضر في الملعب دلوقتي ✅</div></div>
+      <div class="card stat"><div class="num">${d.absent_today}</div><div class="lbl">غايب ❌</div></div>
+      <div class="card stat"><div class="num">${unmarked}</div><div class="lbl">لسه ما اتسجلش</div></div>
+      <div class="card stat"><div class="num">${m.dropout_year}</div><div class="lbl">منقطع (غايب أسبوعين+)</div></div>
+    </div>
+    <h2 class="section">حسب المجموعة</h2>
+    ${d.squad_attendance.map((s) => `
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+          <div>
+            <div style="font-weight:700">${esc(s.squad || 'بدون مجموعة')}</div>
+            <div class="sub">${s.coaches.length ? esc(s.coaches.join('، ')) : ''}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${s.present === 0 && s.absent === 0
+              ? `<span class="badge grace">لسه ما اتسجلش (${s.total} لاعب)</span>`
+              : `<span class="badge active">✅ حاضر ${s.present}</span> <span class="badge expired">❌ غايب ${s.absent}</span>${s.total - s.present - s.absent > 0 ? ` <span class="badge grace">لسه ${s.total - s.present - s.absent}</span>` : ''}`}
+            ${dropoutsBySquad[s.squad || ''] ? `<span class="badge none">منقطع ${dropoutsBySquad[s.squad || '']}</span>` : ''}
+          </div>
+        </div>
+      </div>`).join('')}
+    <div class="sub" style="text-align:center;margin-top:8px">الأرقام بتتحدث مع حفظ كل مدرب - افتح الشاشة تاني للتحديث</div>`;
+}
+
 const routes = {
   '/': renderDashboard,
+  '/training': renderTrainingDay,
   '/players': renderPlayers,
   '/attendance': renderAttendance,
   '/messages': renderMessages,
