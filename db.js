@@ -154,6 +154,9 @@ const DEFAULTS = {
     'أهلًا {parent}، اشتراك {player} في {academy} انتهى من {days} يوم ولسه في فترة السماح. ياريت التجديد في أقرب وقت عشان يفضل تدريبه منتظم.',
   tpl_late:
     'أهلًا {parent}، اشتراك {player} في {academy} منتهي من {days} يوم. ياريت تشرفنا للتجديد في أقرب وقت عشان يقدر يرجع للتدريب مع زمايله.',
+  social_facebook: 'https://www.facebook.com/people/United-Academy/61589982185418/',
+  social_instagram: 'https://www.instagram.com/unitedacademy.eg',
+  social_tiktok: 'https://www.tiktok.com/@unitedacademy.eg',
   tpl_birthday:
     'أهلًا {parent}، كل سنة و{player} طيب 🎂🎈 عيد ميلاد سعيد من كل فريق {academy}، ونتمناله سنة مليانة نجاح وأهداف ⚽'
 };

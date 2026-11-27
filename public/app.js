@@ -568,7 +568,8 @@ async function renderPlayer(id) {
       ${p.membership_no ? `<div class="kv"><span class="k">رقم العضوية (نادي المستقبل)</span><span>${esc(p.membership_no)}</span></div>` : ''}
       ${hideSub ? '' : (p.subscription ? `
       <div class="kv"><span class="k">الاشتراك الحالي</span><span>${p.subscription.start_date} ← ${p.subscription.end_date}</span></div>
-      ${p.subscription.amount !== null && p.subscription.amount !== undefined ? `<div class="kv"><span class="k">المبلغ</span><span>${fmt(p.subscription.amount)} جنيه / ${p.subscription.months} شهر</span></div>` : ''}` :
+      ${p.subscription.amount !== null && p.subscription.amount !== undefined ? `<div class="kv"><span class="k">المبلغ</span><span>${fmt(p.subscription.amount)} جنيه / ${p.subscription.months} شهر</span></div>` :
+        (currentUser && currentUser.role === 'viewer' ? `<div class="kv"><span class="k">حالة الاشتراك</span><span>${p.subscription.kind === 'mustaqbal' ? 'أعضاء نادي المستقبل' : ({ 1: 'باقة شهرية', 3: 'باقة 3 شهور', 6: 'باقة 6 شهور', 12: 'باقة سنوية' }[p.subscription.months] || 'باقة ' + p.subscription.months + ' شهر')} - ${({ active: 'ساري', grace: 'فترة سماح', expired: 'منتهي' }[p.sub_state] || '-')}</span></div>` : '')}` :
       '<div class="note" style="margin-top:6px">مفيش اشتراك مسجل لسه.</div>')}
       ${fullRole ? `<div class="btn-row">
         <button class="btn" id="renew-btn">${p.subscription ? 'تجديد اشتراك' : 'اشتراك جديد'}</button>
@@ -1071,6 +1072,13 @@ async function renderSettings() {
       <label>متأخر (فترة السماح)</label><textarea id="st-t5">${esc(s.tpl_overdue)}</textarea>
       <label>متأخر (بعد انتهاء السماح)</label><textarea id="st-t6">${esc(s.tpl_late)}</textarea>
     </div>
+    <div class="card">
+      <h2 class="section" style="margin-top:0">لينكات السوشيال</h2>
+      <p class="note">بتظهر في شاشة المزيد. لازم لينك https من المنصة الرسمية - سيبها فاضية لو عايز تخفيها. ${currentUser && currentUser.role !== 'admin' ? 'يعدلها حساب الأدمن بس.' : ''}</p>
+      <label>فيسبوك</label><input id="so-facebook" dir="ltr" value="${esc(s.social_facebook || '')}" placeholder="https://www.facebook.com/..." />
+      <label>إنستجرام</label><input id="so-instagram" dir="ltr" value="${esc(s.social_instagram || '')}" placeholder="https://www.instagram.com/..." />
+      <label>تيك توك</label><input id="so-tiktok" dir="ltr" value="${esc(s.social_tiktok || '')}" placeholder="https://www.tiktok.com/..." />
+    </div>
     <button class="btn block" id="st-save">حفظ الإعدادات</button>
     <div class="card" style="margin-top:10px">
       <h2 class="section" style="margin-top:0">أسعار بنود الاشتراك</h2>
@@ -1238,11 +1246,20 @@ async function renderSettings() {
       tpl_reminder_7d: document.getElementById('st-t3').value,
       tpl_due: document.getElementById('st-t4').value,
       tpl_overdue: document.getElementById('st-t5').value,
-      tpl_late: document.getElementById('st-t6').value
+      tpl_late: document.getElementById('st-t6').value,
+      social_facebook: document.getElementById('so-facebook').value,
+      social_instagram: document.getElementById('so-instagram').value,
+      social_tiktok: document.getElementById('so-tiktok').value
     }});
     toast('اتحفظت الإعدادات ✅');
   };
   // حساب المشاهدة: الإعدادات قراءة بس - قفل كل الخانات وإخفاء أزرار الحفظ
+  if (currentUser && currentUser.role !== 'admin') {
+    ['so-facebook', 'so-instagram', 'so-tiktok'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = true;
+    });
+  }
   if (currentUser && currentUser.role === 'viewer') {
     app.querySelectorAll('input, textarea, select').forEach((el) => { el.disabled = true; });
     ['st-save', 'st-items-save', 'st-plans-save', 'backup-run', 'u-add'].forEach((id) => {
@@ -1696,10 +1713,10 @@ const SOCIAL_ICONS = {
   tt: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M16.5 3c.4 2 1.8 3.4 3.9 3.7v3.1c-1.5 0-2.8-.5-3.9-1.3v6.4c0 3.6-2.5 5.9-5.7 5.9-3 0-5.5-2.3-5.5-5.4 0-3 2.4-5.4 5.6-5.3.3 0 .6 0 .9.1v3.2c-.3-.1-.6-.2-.9-.2-1.4 0-2.5 1.1-2.5 2.4 0 1.4 1.1 2.4 2.5 2.4 1.5 0 2.6-1.1 2.6-2.8V3h3z"/></svg>`,
   userPlus: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="8" r="4"/><path d="M3.5 20c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5"/><path d="M19 8v6M16 11h6"/></svg>`
 };
-const SOCIAL_LINKS = [
-  ['https://www.facebook.com/people/United-Academy/61589982185418/', 'فيسبوك', 'fb'],
-  ['https://www.instagram.com/unitedacademy.eg', 'إنستجرام', 'ig'],
-  ['https://www.tiktok.com/@unitedacademy.eg', 'تيك توك', 'tt']
+const SOCIAL_PLATFORMS = [
+  ['facebook', 'فيسبوك', 'fb'],
+  ['instagram', 'إنستجرام', 'ig'],
+  ['tiktok', 'تيك توك', 'tt']
 ];
 const MORE_ICONS = {
   'clip': `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>`,
@@ -1720,18 +1737,21 @@ async function renderMore() {
   }
   links.push(['#/staff', 'cap', 'الجهاز']);
   if (full) links.push(['#/settings', 'gear', 'الإعدادات']);
-  const socialCard = `
+  let socialUrls = {};
+  try { socialUrls = await api('/social-links'); } catch (e) {}
+  const socialItems = SOCIAL_PLATFORMS.filter(([key]) => socialUrls[key]);
+  const socialCard = socialItems.length ? `
     <div class="card" style="margin-top:12px">
       <h2 class="section" style="margin-top:0">تابع يونايتد أكاديمي</h2>
       <p class="note">تدريباتنا ومبارياتنا وأخبار الأكاديمية أول بأول</p>
       <div style="display:flex;gap:14px;justify-content:space-around">
-        ${SOCIAL_LINKS.map(([href, label, icon]) => `
-          <a href="${href}" target="_blank" rel="noopener noreferrer" style="display:flex;flex-direction:column;align-items:center;gap:6px;text-decoration:none;color:var(--ink)">
+        ${socialItems.map(([key, label, icon]) => `
+          <a href="${esc(socialUrls[key])}" target="_blank" rel="noopener noreferrer" style="display:flex;flex-direction:column;align-items:center;gap:6px;text-decoration:none;color:var(--ink)">
             <span style="width:46px;height:46px;border-radius:50%;border:1.5px solid var(--brand);display:flex;align-items:center;justify-content:center;color:var(--brand)">${SOCIAL_ICONS[icon]}</span>
             <span style="font-size:12px;font-weight:600">${label}</span>
           </a>`).join('')}
       </div>
-    </div>`;
+    </div>` : '';
   app.innerHTML = links.map(([href, icon, label]) => `
     <div class="list-item" onclick="location.hash='${href}'">
       <div class="grow"><div class="name" style="display:flex;align-items:center;gap:8px">${MORE_ICONS[icon] || ''} ${label}</div></div>

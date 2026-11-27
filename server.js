@@ -870,13 +870,36 @@ app.get('/api/settings', asyncWrap((req, res) => {
   res.json(out);
 }));
 
+const SOCIAL_RE = /^https:\/\/(www\.|m\.)?(facebook\.com|instagram\.com|tiktok\.com)\//i;
+
 app.put('/api/settings', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
   const body = req.body || {};
+  // لينكات السوشيال: الأدمن بس، ولازم https من دومين رسمي (أو فاضية فبتتخفي من الشاشة)
+  for (const k of ['social_facebook', 'social_instagram', 'social_tiktok']) {
+    if (body[k] !== undefined && body[k] !== getSetting(k)) {
+      if (req.user.role !== 'admin') continue;
+      const v = String(body[k]).trim();
+      if (v && !SOCIAL_RE.test(v)) {
+        return res.status(400).json({ error: 'لينك السوشيال لازم يبدأ بـ https ويكون من فيسبوك أو إنستجرام أو تيك توك' });
+      }
+    }
+  }
   Object.keys(DEFAULTS).forEach((k) => {
-    if (body[k] !== undefined) setSetting(k, typeof body[k] === 'string' ? body[k] : JSON.stringify(body[k]));
+    if (body[k] === undefined) return;
+    if (k.startsWith('social_') && req.user.role !== 'admin') return;
+    setSetting(k, typeof body[k] === 'string' ? body[k].trim() : JSON.stringify(body[k]));
   });
   res.json({ ok: true });
+}));
+
+// لينكات السوشيال متاحة لكل الأدوار (لينكات عامة) - بتتعرض في شاشة المزيد
+app.get('/api/social-links', asyncWrap((req, res) => {
+  res.json({
+    facebook: getSetting('social_facebook') || '',
+    instagram: getSetting('social_instagram') || '',
+    tiktok: getSetting('social_tiktok') || ''
+  });
 }));
 
 // ---------- expenses & finance (full roles) ----------
