@@ -26,9 +26,12 @@ app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') // دايمن يسأل السيرفر عن آخر نسخة - مفيش نسخة قديمة بتفضل عالقة عند حد
 }));
 
+const backup = require('./backup');
+backup.restoreIfFreshDeploy(); // نقطة الاستعادة بعد النشر - غير مفعّلة لحد ربط Drive بموافقة أحمد
 seedIfEmpty();
 auth.ensureAdmin();
 automation.runDaily(); // renewal drafts on boot; still drafts, nothing sent
+backup.startScheduler(); // النسخ اليومي 2 بالليل القاهرة - الرفع على Drive مقفول لحد الموافقة
 
 // ---------- auth ----------
 app.post('/api/login', (req, res) => {
@@ -363,6 +366,16 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
 
 // ---------- subscriptions ----------
 app.get('/api/plans', asyncWrap((req, res) => res.json(getPlans())));
+
+// النسخ الاحتياطي (إدارة بس): الحالة + تشغيل يدوي. الرفع على Drive مقفول لحد موافقة أحمد.
+app.get('/api/backup/status', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  res.json(backup.backupStatus());
+}));
+app.post('/api/backup/run', asyncWrap(async (req, res) => {
+  if (!requireFull(req, res)) return;
+  res.json(await backup.runBackup('manual'));
+}));
 
 // أسعار خطط الأكاديمية قابلة للتعديل من الإعدادات (إدارة بس)
 app.put('/api/plans', asyncWrap((req, res) => {

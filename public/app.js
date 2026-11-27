@@ -920,6 +920,12 @@ async function renderSettings() {
       <button class="btn block" id="st-plans-save" style="margin-top:8px">حفظ أسعار الخطط</button>
     </div>
     <div class="card" style="margin-top:10px">
+      <h2 class="section" style="margin-top:0">النسخ الاحتياطي</h2>
+      <p class="note">نسخة تلقائية كل يوم الساعة 2 بالليل. الرفع على Google Drive هيشتغل بعد موافقة الإدارة على الربط - دلوقتي النسخة بتتجهز محليًا بس ومفيش أي بيانات بتسيب السيرفر.</p>
+      <div id="backup-status"></div>
+      <button class="btn block" id="backup-run" style="margin-top:8px">نسخة احتياطية دلوقتي</button>
+    </div>
+    <div class="card" style="margin-top:10px">
       <h2 class="section" style="margin-top:0">المستخدمون</h2>
       <div id="users-list"></div>
       <label>اسم مستخدم جديد</label><input id="u-name" />
@@ -1007,6 +1013,23 @@ async function renderSettings() {
       await api('/plans', { method: 'PUT', body });
       toast('اتحفظت أسعار الخطط ✅');
       loadPlanPrices();
+    } catch (e) { toast(e.message); }
+  };
+  async function loadBackupStatus() {
+    try {
+      const b = await api('/backup/status');
+      document.getElementById('backup-status').innerHTML = `
+        <div class="kv"><span class="k">ربط Google Drive</span><span>${b.drive_linked ? '✅ مربوط' : '⏳ مستني الموافقة على الربط'}</span></div>
+        <div class="kv"><span class="k">آخر نسخة</span><span>${b.last_at ? esc(b.last_at) : 'لسه مفيش'}</span></div>
+        ${b.last_result ? `<div class="kv"><span class="k">النتيجة</span><span>${esc(b.last_result)}</span></div>` : ''}`;
+    } catch (e) { document.getElementById('backup-status').innerHTML = '<div class="empty">مش متاحة</div>'; }
+  }
+  await loadBackupStatus();
+  document.getElementById('backup-run').onclick = async () => {
+    try {
+      const r = await api('/backup/run', { method: 'POST' });
+      toast(r.skipped ? ('اتجهزت النسخة محليًا - ' + (r.reason || '')) : 'اتعملت النسخة الاحتياطية ✅');
+      loadBackupStatus();
     } catch (e) { toast(e.message); }
   };
   document.getElementById('st-items-save').onclick = async () => {
