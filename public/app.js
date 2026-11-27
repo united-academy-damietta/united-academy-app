@@ -239,6 +239,29 @@ async function renderDashboard() {
       <div class="card stat" style="cursor:pointer" onclick="document.getElementById('late-list').scrollIntoView({behavior:'smooth'})"><div class="num">${d.late_unpaid}</div><div class="lbl">متأخرين في الدفع ⚠️</div></div>
       <div class="card stat"><div class="num">${fmt(d.collected_month)}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('dropout-list')"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال 3 شهور (الشهر ده: ${d.dropout_month})</div></div>
+      <div class="card stat" style="cursor:pointer" onclick="toggleDashList('bday-month-list')"><div class="num">${d.birthdays_month.length}</div><div class="lbl">عيد ميلاد الشهر ده 🎂</div></div>
+      <div class="card stat" style="cursor:pointer" onclick="toggleDashList('top-att-list')"><div class="num">${d.top_attendance.length ? d.top_attendance[0].pct + '%' : '0'}</div><div class="lbl">أعلى نسبة حضور الشهر ده ✅</div></div>
+    </div>
+    <div id="bday-month-list" style="display:none">
+    <h2 class="section">🎂 أعياد ميلاد الشهر ده (${d.birthdays_month.length})</h2>
+    ${d.birthdays_month.length ? d.birthdays_month.map((p) => `
+      <div class="list-item" onclick="location.hash='#/player/${p.id}'">
+        <div class="grow">
+          <div class="name">${esc(p.name)}</div>
+          <div class="sub">يوم ${p.day} في الشهر${p.parent_name ? ' • ولي الأمر: ' + esc(p.parent_name) : ''}</div>
+        </div>
+      </div>`).join('') : '<div class="empty">مفيش أعياد ميلاد الشهر ده</div>'}
+    </div>
+    <div id="top-att-list" style="display:none">
+    <h2 class="section">✅ الأكثر حضورًا الشهر ده (من ${d.top_attendance.length ? d.top_attendance[0].sessions : 0} حصة)</h2>
+    ${d.top_attendance.length ? d.top_attendance.map((p, i) => `
+      <div class="list-item" onclick="location.hash='#/player/${p.id}'">
+        <div class="grow">
+          <div class="name">${i + 1}. ${esc(p.name)}</div>
+          <div class="sub">حضر ${p.present} من ${p.sessions} حصة</div>
+        </div>
+        <span class="badge active">${p.pct}%</span>
+      </div>`).join('') : '<div class="empty">لسه مفيش حضور متسجل الشهر ده</div>'}
     </div>
     <div id="coaches-box"></div>
     <h2 class="section" id="late-list">تجديدات مستنية (خلال 7 أيام أو متأخرة)</h2>

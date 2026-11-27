@@ -208,11 +208,27 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
       .sort((a, b) => a.end_date.localeCompare(b.end_date));
     renewNextMonth = renewNextList.length;
   }
+  // أعياد ميلاد الشهر الحالي + الأكثر حضورًا الشهر الحالي (المدرب: مجموعته بس - مفيش بيانات مالية)
+  const curMM = today.slice(5, 7);
+  const birthdaysMonth = decorated
+    .filter((p) => p.birth_date && p.birth_date.slice(5, 7) === curMM)
+    .map((p) => ({ id: p.id, name: p.name, birth_date: p.birth_date, parent_name: p.parent_name, day: Number(p.birth_date.slice(8, 10)) }))
+    .sort((a, b) => a.day - b.day);
+  const sessionsMonth = db.prepare('SELECT COUNT(DISTINCT date) AS n FROM attendance WHERE date >= ?').get(monthStart).n || 1;
+  const topAttendance = db.prepare(
+    `SELECT p.id, p.name, SUM(CASE WHEN a.present = 1 THEN 1 ELSE 0 END) AS present
+     FROM players p JOIN attendance a ON a.player_id = p.id AND a.date >= ?
+     WHERE p.status = 'active' ${squad ? 'AND p.squad = ?' : ''}
+     GROUP BY p.id HAVING present > 0 ORDER BY present DESC, p.name LIMIT 10`
+  ).all(...[monthStart].concat(squad ? [squad] : []))
+    .map((r) => ({ id: r.id, name: r.name, present: r.present, sessions: sessionsMonth, pct: Math.round((r.present / sessionsMonth) * 100) }));
   const announcements = db.prepare('SELECT * FROM announcements ORDER BY id DESC LIMIT 10').all();
   res.json({
     today,
     at_risk: atRisk,
     birthdays_week: birthdaysWeek,
+    birthdays_month: birthdaysMonth,
+    top_attendance: topAttendance,
     announcements,
     is_training_day: JSON.parse(getSetting('training_days')).includes(new Date(today + 'T12:00:00Z').getUTCDay()),
     players_total: players.length,
