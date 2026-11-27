@@ -216,6 +216,7 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
       end_date: p.subscription.end_date
     })),
     renew_next_month: isCoach ? null : renewNextMonth,
+    late_unpaid: isCoach ? null : decorated.filter((p) => p.sub_state === 'grace' || p.sub_state === 'expired').length,
     collected_month: isCoach ? null : collected.total,
     payments_month: isCoach ? null : collected.n,
     present_today: att.present,

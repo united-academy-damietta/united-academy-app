@@ -228,11 +228,12 @@ async function renderDashboard() {
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
       <div class="card stat"><div class="num">${d.renew_next_month}</div><div class="lbl">لاعب هيجددوا الشهر الجاي 🔄</div></div>
+      <div class="card stat" style="cursor:pointer" onclick="document.getElementById('late-list').scrollIntoView({behavior:'smooth'})"><div class="num">${d.late_unpaid}</div><div class="lbl">متأخرين في الدفع ⚠️</div></div>
       <div class="card stat"><div class="num">${d.collected_month}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
       <div class="card stat"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال 3 شهور (الشهر ده: ${d.dropout_month})</div></div>
     </div>
     <div id="coaches-box"></div>
-    <h2 class="section">تجديدات مستنية (خلال 7 أيام أو متأخرة)</h2>
+    <h2 class="section" id="late-list">تجديدات مستنية (خلال 7 أيام أو متأخرة)</h2>
     ${d.renewals_due.length ? d.renewals_due.map((p) => `
       <div class="list-item" onclick="location.hash='#/player/${p.id}'">
         <div class="grow">
