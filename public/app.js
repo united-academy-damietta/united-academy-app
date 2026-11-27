@@ -14,6 +14,7 @@ function applyRoleNav() {
   });
 }
 const pageTitle = document.getElementById('page-title');
+const fmt = (n) => (n === null || n === undefined || n === '' ? '0' : Number(n).toLocaleString('en-US'));
 
 async function api(path, opts) {
   const res = await fetch('/api' + path, opts ? {
@@ -236,7 +237,7 @@ async function renderDashboard() {
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('renew-next-list')"><div class="num">${d.renew_next_month}</div><div class="lbl">لاعب هيجددوا الشهر الجاي 🔄</div></div>
       <div class="card stat" style="cursor:pointer" onclick="document.getElementById('late-list').scrollIntoView({behavior:'smooth'})"><div class="num">${d.late_unpaid}</div><div class="lbl">متأخرين في الدفع ⚠️</div></div>
-      <div class="card stat"><div class="num">${d.collected_month}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
+      <div class="card stat"><div class="num">${fmt(d.collected_month)}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('dropout-list')"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال 3 شهور (الشهر ده: ${d.dropout_month})</div></div>
     </div>
     <div id="coaches-box"></div>
@@ -340,8 +341,8 @@ async function renderDashboard() {
     try {
       const f = await api('/finance');
       document.querySelector('.grid').insertAdjacentHTML('beforeend', `
-        <div class="card stat"><div class="num">${f.expenses_month}</div><div class="lbl">مصاريف الشهر</div></div>
-        <div class="card stat"><div class="num">${f.expenses_year}</div><div class="lbl">مصاريف السنة</div></div>
+        <div class="card stat"><div class="num">${fmt(f.expenses_month)}</div><div class="lbl">مصاريف الشهر</div></div>
+        <div class="card stat"><div class="num">${fmt(f.expenses_year)}</div><div class="lbl">مصاريف السنة</div></div>
         ${f.net_year === null ? '' : `<div class="card stat"><div class="num" style="color:${f.net_year >= 0 ? 'var(--green-dark)' : 'var(--red)'}">${f.net_year}</div><div class="lbl">صافي السنة</div></div>`}`);
     } catch (e) {}
     try {
@@ -474,7 +475,7 @@ async function renderPlayer(id) {
       ${p.membership_no ? `<div class="kv"><span class="k">رقم العضوية (نادي المستقبل)</span><span>${esc(p.membership_no)}</span></div>` : ''}
       ${hideSub ? '' : (p.subscription ? `
       <div class="kv"><span class="k">الاشتراك الحالي</span><span>${p.subscription.start_date} ← ${p.subscription.end_date}</span></div>
-      ${p.subscription.amount !== null && p.subscription.amount !== undefined ? `<div class="kv"><span class="k">المبلغ</span><span>${p.subscription.amount} جنيه / ${p.subscription.months} شهر</span></div>` : ''}` :
+      ${p.subscription.amount !== null && p.subscription.amount !== undefined ? `<div class="kv"><span class="k">المبلغ</span><span>${fmt(p.subscription.amount)} جنيه / ${p.subscription.months} شهر</span></div>` : ''}` :
       '<div class="note" style="margin-top:6px">مفيش اشتراك مسجل لسه.</div>')}
       ${fullRole ? `<div class="btn-row">
         <button class="btn" id="renew-btn">${p.subscription ? 'تجديد اشتراك' : 'اشتراك جديد'}</button>
@@ -483,11 +484,11 @@ async function renderPlayer(id) {
     </div>
     ${hideSub ? '' : `<h2 class="section">سجل الاشتراكات</h2>
     ${p.subscriptions.length ? p.subscriptions.map((s) => `
-      <div class="card"><div class="kv"><span class="k">${s.start_date} ← ${s.end_date}</span><span>${s.amount !== null && s.amount !== undefined ? `${s.amount} جنيه (${s.months} شهر)` : 'اشتراك ' + s.months + ' شهر'}</span></div></div>
+      <div class="card"><div class="kv"><span class="k">${s.start_date} ← ${s.end_date}</span><span>${s.amount !== null && s.amount !== undefined ? `${fmt(s.amount)} جنيه (${s.months} شهر)` : 'اشتراك ' + s.months + ' شهر'}</span></div></div>
     `).join('') : '<div class="empty">لا يوجد</div>'}`}
     ${hideSub ? '' : `<h2 class="section">مدفوعات البنود</h2>
     ${(p.payments && p.payments.length) ? p.payments.map((y) => `
-      <div class="card"><div class="kv"><span class="k">${esc(y.label)}</span><span>${y.amount} جنيه - ${y.date}</span></div></div>
+      <div class="card"><div class="kv"><span class="k">${esc(y.label)}</span><span>${fmt(y.amount)} جنيه - ${y.date}</span></div></div>
     `).join('') : '<div class="empty">لا يوجد</div>'}`}
     <h2 class="section">آخر الحضور</h2>
     ${p.attendance.length ? p.attendance.map((a) => `
@@ -588,7 +589,7 @@ async function renderPlayer(id) {
     const items = await api('/subscription-items');
     window._subItems = items;
     const planOpts = Object.entries(plans).map(([k, v]) =>
-      `<option value="${k}">${v.label} - ${v.amount} جنيه</option>`).join('');
+      `<option value="${k}">${v.label} - ${fmt(v.amount)} جنيه</option>`).join('');
     const itemsHtml = items.map((it) => `
       <div class="kv" style="align-items:center">
         <label style="margin:0;display:flex;align-items:center;gap:6px"><input type="checkbox" class="s-item" data-id="${it.id}" /> ${esc(it.label)}</label>
@@ -1123,14 +1124,14 @@ async function renderExpenses() {
   app.innerHTML = `
     <div class="grid">
       <div class="card stat"><div class="num">${f.revenue_month}</div><div class="lbl">إيرادات الشهر</div></div>
-      <div class="card stat"><div class="num">${f.expenses_month}</div><div class="lbl">مصاريف الشهر</div></div>
+      <div class="card stat"><div class="num">${fmt(f.expenses_month)}</div><div class="lbl">مصاريف الشهر</div></div>
       <div class="card stat"><div class="num">${f.revenue_year}</div><div class="lbl">محصلة السنة</div></div>
-      <div class="card stat"><div class="num">${f.expenses_year}</div><div class="lbl">مصاريف السنة</div></div>
+      <div class="card stat"><div class="num">${fmt(f.expenses_year)}</div><div class="lbl">مصاريف السنة</div></div>
     </div>
     ${f.net_year === null ? '' : `<div class="card" style="text-align:center">
       <div class="lbl" style="color:var(--muted);font-size:13px">صافي السنة</div>
-      <div class="num" style="font-size:30px;font-weight:800;color:${f.net_year >= 0 ? 'var(--green-dark)' : 'var(--red)'}">${f.net_year} جنيه</div>
-      <div class="note">صافي الشهر: ${f.net_month} جنيه</div>
+      <div class="num" style="font-size:30px;font-weight:800;color:${f.net_year >= 0 ? 'var(--green-dark)' : 'var(--red)'}">${fmt(f.net_year)} جنيه</div>
+      <div class="note">صافي الشهر: ${fmt(f.net_month)} جنيه</div>
     </div>`}
     <h2 class="section">تسجيل مصروف</h2>
     <div class="card">
@@ -1383,7 +1384,7 @@ async function renderSubscribe() {
   const overview = await api('/subscriptions/overview');
   window._subItems = items;
   const planOpts = Object.entries(plans).map(([k, v]) =>
-    `<option value="${k}">${v.label} - ${v.amount} جنيه</option>`).join('');
+    `<option value="${k}">${v.label} - ${fmt(v.amount)} جنيه</option>`).join('');
   const itemsHtml = items.map((it) => `
     <div class="kv" style="align-items:center">
       <label style="margin:0;display:flex;align-items:center;gap:6px"><input type="checkbox" class="r-item" data-id="${it.id}" /> ${esc(it.label)}</label>
