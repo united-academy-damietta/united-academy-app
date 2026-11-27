@@ -16,7 +16,11 @@ function applyRoleNav() {
 const pageTitle = document.getElementById('page-title');
 // بادج الاشتراكات: عدد التجديدات المستنية (7 أيام + سماح) للإدارة
 async function updateSubBadge() {
-  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) return;
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) {
+    const old = document.querySelector('#bottomnav .nav-badge');
+    if (old) old.remove(); // مسح البادج عند الخروج أو تبديل الحساب - ميفضلش من جلسة قديمة
+    return;
+  }
   try {
     const d = await api('/dashboard');
     const n = (d.renewals_due || []).length;
@@ -264,6 +268,7 @@ async function renderDashboard() {
           <div class="name">${esc(p.name)}</div>
           <div class="sub">يوم ${p.day} في الشهر${p.parent_name ? ' • ولي الأمر: ' + esc(p.parent_name) : ''}</div>
         </div>
+        ${currentUser.role !== 'viewer' ? `<button class="btn small" data-bday="${p.id}">🎉 جهز تهنئة</button>` : ''}
       </div>`).join('') : '<div class="empty">مفيش أعياد ميلاد الشهر ده</div>'}
     </div>
     <div id="top-att-list" style="display:none">
@@ -323,8 +328,9 @@ async function renderDashboard() {
           <div class="name">${esc(p.name)}${p.squad ? ' - ' + esc(p.squad) : ''}</div>
           <div class="sub">هيكمل ${p.turns} سنة يوم ${p.date_this_year}</div>
         </div>
-        <button class="btn small" data-bday="${p.id}">🎉 جهز تهنئة</button>
+        ${currentUser.role !== 'viewer' ? `<button class="btn small" data-bday="${p.id}">🎉 جهز تهنئة</button>` : ''}
       </div>`).join('') : '<div class="empty">مفيش أعياد ميلاد الأسبوع ده</div>'}
+    ${currentUser.role !== 'viewer' ? `
     <h2 class="section">📢 إعلان تغيير التمرين والإعلانات</h2>
     <div class="list-item" style="cursor:default">
       <div class="grow" style="display:flex; flex-direction:column; gap:8px">
@@ -336,12 +342,13 @@ async function renderDashboard() {
         <input type="text" id="ann-details" placeholder="مثال: تمرين الخميس هيبقى الساعة 6 بدل 5 بسبب الحر" />
         <button class="btn small" id="ann-add">📢 أضف إعلان</button>
       </div>
-    </div>
-    ${(d.announcements || []).map((a) => announcementCard(a, true)).join('') || '<div class="empty">مفيش إعلانات لسه</div>'}
+    </div>` : ''}
+    ${(d.announcements && d.announcements.length) ? '<h2 class="section">📢 إعلانات الأكاديمي</h2>' + d.announcements.map((a) => announcementCard(a, true)).join('') : '<div class="empty">مفيش إعلانات لسه</div>'}
+    ${currentUser.role !== 'viewer' ? `
     <div class="btn-row">
       <a class="btn secondary" href="#/messages">الرسائل الجاهزة (${d.draft_messages})</a>
       <button class="btn" id="gen-btn">تحديث التذكيرات</button>
-    </div>`;
+    </div>` : ''}`;
   document.querySelectorAll('[data-renew-wa]').forEach((btn) => {
     btn.onclick = async (e) => {
       e.stopPropagation();
@@ -352,12 +359,14 @@ async function renderDashboard() {
       btn.disabled = false;
     };
   });
-  document.getElementById('gen-btn').onclick = async () => {
+  const genBtn = document.getElementById('gen-btn');
+  if (genBtn) genBtn.onclick = async () => {
     const r = await api('/messages/generate', {});
     toast(`اتعمل ${r.renewals} تذكير جديد`);
     renderDashboard();
   };
-  document.getElementById('ann-add').onclick = async () => {
+  const annAdd = document.getElementById('ann-add');
+  if (annAdd) annAdd.onclick = async () => {
     const details = document.getElementById('ann-details').value.trim();
     if (!details) { toast('اكتب تفاصيل الإعلان'); return; }
     await api('/announcements', { body: {
@@ -377,11 +386,13 @@ async function renderDashboard() {
     };
   });
   document.querySelectorAll('[data-bday]').forEach((btn) => {
-    btn.onclick = async () => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
       btn.disabled = true;
       const r = await api('/messages/birthday/' + btn.dataset.bday, {});
-      toast(r.created ? 'التهنئة جاهزة في شاشة الرسائل 📝' : 'التهنئة متجهزة قبل كده');
-      if (!r.created) btn.disabled = false;
+      toast(r.created ? 'التهنئة جاهزة - ابعتها من واتساب بنفسك 🎉' : 'التهنئة متجهزة قبل كده - هتلاقيها في الرسائل');
+      if (r.wa_link) window.open(r.wa_link, '_blank', 'noopener');
+      btn.disabled = false;
     };
   });
 
@@ -426,7 +437,7 @@ async function renderPlayers() {
   app.innerHTML = `
     <div class="search-row">
       <input id="search" placeholder="ابحث بالاسم أو رقم ولي الأمر..." />
-      <button class="btn" id="add-btn" style="white-space:nowrap">＋ لاعب</button>
+      ${currentUser && currentUser.role !== 'viewer' ? `<button class="btn" id="add-btn" style="white-space:nowrap">＋ لاعب</button>` : ''}
     </div>
     ${currentUser && currentUser.role !== 'coach' ? `
     <div id="p-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
@@ -472,7 +483,8 @@ async function renderPlayers() {
     clearTimeout(timer);
     timer = setTimeout(() => load(e.target.value.trim()), 250);
   };
-  document.getElementById('add-btn').onclick = () => {
+  const addBtn = document.getElementById('add-btn');
+  if (addBtn) addBtn.onclick = () => {
     openModal(`
     <h3>لاعب جديد</h3>
     <label>اسم اللاعب *</label><input id="f-name" />
@@ -508,6 +520,7 @@ async function renderPlayers() {
 async function renderPlayer(id) {
   pageTitle.textContent = 'ملف اللاعب';
   const fullRole = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
+  const canWrite = currentUser && currentUser.role !== 'viewer'; // المشاهد: مفيش أزرار كتابة خالص
   const p = await api('/players/' + id);
   const hideSub = p.sub_state === null; // المدرب: من غير أي حاجة عن الاشتراك
   app.innerHTML = `
@@ -564,9 +577,9 @@ async function renderPlayer(id) {
         <div style="margin-top:4px">${scoreLine(cur)}${trend(cur, past[0])}</div>
         ${cur.notes ? `<div class="sub" style="margin-top:4px">${esc(cur.notes)}</div>` : ''}` :
         '<div class="note">لسه مفيش تقييم للشهر ده</div>'}
-      <div class="btn-row" style="margin-top:8px">
+      ${canWrite ? `<div class="btn-row" style="margin-top:8px">
         <button class="btn secondary" id="ev-btn">${cur ? 'تعديل تقييم الشهر ده' : 'قيّم الشهر ده'}</button>
-      </div>
+      </div>` : ''}
     </div>
     ${past.length ? past.map((e, i) => `
       <div class="card">
@@ -576,7 +589,7 @@ async function renderPlayer(id) {
       </div>`).join('') : ''}`;
     })()}
     <h2 class="section">سجل التواصل مع ولي الأمر</h2>
-    <div class="card">
+    ${canWrite ? `<div class="card">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <select id="cl-type" style="flex:1;min-width:120px">
           <option>غياب</option>
@@ -588,14 +601,15 @@ async function renderPlayer(id) {
         <input id="cl-note" placeholder="مثال: كلمنا والده بخصوص الغياب المتكرر" style="flex:3;min-width:180px" />
         <button class="btn" id="cl-add">حفظ</button>
       </div>
-    </div>
+    </div>` : ''}
     ${p.contact_log && p.contact_log.length ? p.contact_log.map((c) => `
       <div class="card">
         <div class="kv"><span class="k">${esc(c.type)}</span><span>${esc((c.created_at || '').slice(0, 10))} • ${esc(c.staff_name || '')}</span></div>
         <div style="margin-top:4px">${esc(c.note || '')}</div>
       </div>
     `).join('') : '<div class="empty">مفيش تواصل مسجل لسه</div>'}`;
-  document.getElementById('ev-btn').onclick = () => {
+  const evBtn = document.getElementById('ev-btn');
+  if (evBtn) evBtn.onclick = () => {
     const curMonth = todayLocal().slice(0, 7);
     const cur = (p.evaluations || []).find((e) => e.month === curMonth) || {};
     const opts = (v) => [1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${n === v ? 'selected' : ''}>${n}</option>`).join('');
@@ -624,7 +638,8 @@ async function renderPlayer(id) {
       renderPlayer(id);
     };
   };
-  document.getElementById('cl-add').onclick = async () => {
+  const clAdd = document.getElementById('cl-add');
+  if (clAdd) clAdd.onclick = async () => {
     const note = document.getElementById('cl-note').value.trim();
     if (!note) { toast('اكتب ملاحظة التواصل الأول'); return; }
     await api(`/players/${id}/contact`, { body: { type: document.getElementById('cl-type').value, note } });
@@ -777,6 +792,7 @@ async function renderAttendance() {
   pageTitle.textContent = 'الحضور';
   const today = todayLocal();
   const fullRole = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
+  const canMark = currentUser && currentUser.role !== 'viewer' && currentUser.role !== 'staff'; // المشاهد: حضور قراءة بس
   app.innerHTML = `
     <div class="tabs">
       <button data-tab="day" class="active">تسجيل يوم</button>
@@ -820,9 +836,9 @@ async function renderAttendance() {
     body.insertAdjacentHTML('beforeend', `
       <input id="att-search" placeholder="🔍 ابحث باسم اللاعب..." style="margin-bottom:8px" />
       <div id="att-rows"></div>
-      <div class="btn-row sticky-save">
+      ${canMark ? `<div class="btn-row sticky-save">
         <button class="btn block" id="save-day">💾 حفظ حضور اليوم</button>
-      </div>
+      </div>` : ''}
       <p class="note" id="att-count" style="margin-top:6px"></p>
       ${fullRole && d.is_training_day ? `
       <div class="btn-row">
@@ -838,6 +854,14 @@ async function renderAttendance() {
     }
     refreshCount();
     function bindRowEvents(container) {
+      if (!canMark) {
+        container.querySelectorAll('.toggle-pill button, .att-clear').forEach((b) => {
+          b.disabled = true;
+          b.style.pointerEvents = 'none';
+          b.style.opacity = '0.65';
+        });
+        return;
+      }
       container.querySelectorAll('.toggle-pill button').forEach((btn) => {
         btn.onclick = () => {
           const pid = btn.dataset.pid;
@@ -877,7 +901,8 @@ async function renderAttendance() {
     }
     renderRows('');
     document.getElementById('att-search').oninput = (e) => renderRows(e.target.value);
-    document.getElementById('save-day').onclick = async () => {
+    const saveDay = document.getElementById('save-day');
+    if (saveDay) saveDay.onclick = async () => {
       const marks = Object.entries(pending).map(([pid, v]) => ({ player_id: Number(pid), present: v }));
       const nPresent = marks.filter((m) => m.present === true).length;
       const nAbsent = marks.filter((m) => m.present === false).length;
@@ -1183,6 +1208,14 @@ async function renderSettings() {
     }});
     toast('اتحفظت الإعدادات ✅');
   };
+  // حساب المشاهدة: الإعدادات قراءة بس - قفل كل الخانات وإخفاء أزرار الحفظ
+  if (currentUser && currentUser.role === 'viewer') {
+    app.querySelectorAll('input, textarea, select').forEach((el) => { el.disabled = true; });
+    ['st-save', 'st-items-save', 'st-plans-save', 'backup-run', 'u-add'].forEach((id) => {
+      const b = document.getElementById(id);
+      if (b) b.style.display = 'none';
+    });
+  }
 }
 
 // ---------------- Router ----------------
@@ -1449,6 +1482,7 @@ async function renderSubscribe() {
     app.innerHTML = '<div class="empty">مش مسموح - الشاشة دي لمسؤولة الاشتراكات والإدارة بس</div>';
     return;
   }
+  const isViewer = currentUser.role === 'viewer';
   const plans = await api('/plans');
   const items = await api('/subscription-items');
   const overview = await api('/subscriptions/overview');
@@ -1487,6 +1521,7 @@ async function renderSubscribe() {
     ${ovList('m12', overview.m12, true)}
     ${ovList('mustaqbal', overview.mustaqbal, true)}
     ${ovList('kit', overview.kit, false)}
+    ${isViewer ? '' : `
     <div class="card">
       <h2 class="section" style="margin-top:0">بيانات اللاعب الجديد</h2>
       <label>اسم اللاعب *</label><input id="r-name" />
@@ -1519,7 +1554,8 @@ async function renderSubscribe() {
       <p class="note">بعد الحفظ هتتجهز رسالة تأكيد واتساب كمسودة في شاشة الرسائل - مفيش إرسال تلقائي.</p>
       <button class="btn" id="r-save" style="width:100%">💾 تسجيل اللاعب والاشتراك</button>
     </div>
-    <div id="r-done"></div>`;
+    <div id="r-done"></div>`}`;
+  if (!isViewer) {
   const upd = () => {
     const academy = document.getElementById('r-academy').checked;
     document.getElementById('r-academy-box').classList.toggle('hidden', !academy);
@@ -1587,6 +1623,7 @@ async function renderSubscribe() {
       toast('اتسجل اللاعب والاشتراك ✅');
     } catch (e) { toast(e.message); }
   };
+  }
 }
 
 // يقرأ البنود المختارة ومبالغها من أي فورم فيه تشيكبوكسات البنود
@@ -1615,8 +1652,10 @@ async function renderMore() {
   const full = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'viewer');
   const links = [];
   if (full) {
-    links.push(['#/messages', 'chat', 'الرسائل']);
-    if (currentUser.role !== 'viewer') links.push(['#/expenses', 'cash', 'المصاريف']);
+    if (currentUser.role !== 'viewer') {
+      links.push(['#/messages', 'chat', 'الرسائل']);
+      links.push(['#/expenses', 'cash', 'المصاريف']);
+    }
   }
   links.push(['#/staff', 'cap', 'الجهاز']);
   if (full) links.push(['#/settings', 'gear', 'الإعدادات']);
