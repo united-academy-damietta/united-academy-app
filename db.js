@@ -76,6 +76,35 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS contact_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  type TEXT NOT NULL DEFAULT 'أخرى',
+  note TEXT,
+  staff_name TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS evaluations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  month TEXT NOT NULL,
+  commitment INTEGER,
+  skill INTEGER,
+  fitness INTEGER,
+  behavior INTEGER,
+  notes TEXT,
+  coach_name TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(player_id, month)
+);
+CREATE TABLE IF NOT EXISTS announcements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  details TEXT,
+  event_date TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
 
 const DEFAULTS = {
@@ -93,7 +122,9 @@ const DEFAULTS = {
   tpl_due:
     'أهلًا {parent}، اشتراك {player} في {academy} انتهى النهاردة. للتجديد رد علينا هنا. في فترة سماح {grace} أيام.',
   tpl_overdue:
-    'أهلًا {parent}، اشتراك {player} في {academy} منتهي من {days} أيام ولسه داخل فترة السماح. ياريت التجديد في أقرب وقت عشان مايتوقفش تدريبه.'
+    'أهلًا {parent}، اشتراك {player} في {academy} منتهي من {days} أيام ولسه داخل فترة السماح. ياريت التجديد في أقرب وقت عشان مايتوقفش تدريبه.',
+  tpl_birthday:
+    'أهلًا {parent}، كل سنة و{player} طيب 🎂🎈 عيد ميلاد سعيد من كل فريق {academy}، ونتمناله سنة مليانة نجاح وأهداف ⚽'
 };
 
 try { db.exec('ALTER TABLE players ADD COLUMN squad TEXT'); } catch (e) {}

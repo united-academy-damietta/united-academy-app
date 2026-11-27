@@ -8,6 +8,7 @@ const {
   getSettingInt,
   todayCairo,
   addMonths,
+  addDays,
   diffDays,
   currentSub,
   subState,
@@ -133,8 +134,36 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
     db.prepare(`SELECT squad, COUNT(*) AS n FROM players WHERE status='active' GROUP BY squad`).all()
       .forEach((r) => (squadTotals[r.squad] = r.n));
   }
+  // At-risk subscriptions (admin/manager): expiring/expired subs and heavy recent absences.
+  let atRisk = [];
+  if (!isCoach) {
+    const tdaysSet = JSON.parse(getSetting('training_days'));
+    const lastTrainingDays = [];
+    for (let i = 0; lastTrainingDays.length < 6 && i < 30; i++) {
+      const d = addDays(today, -i);
+      if (tdaysSet.includes(new Date(d + 'T12:00:00Z').getUTCDay())) lastTrainingDays.push(d);
+    }
+    const ph = lastTrainingDays.map(() => '?').join(',');
+    const absRows = db.prepare(
+      `SELECT player_id, COUNT(*) AS n FROM attendance WHERE present = 0 AND date IN (${ph}) GROUP BY player_id`
+    ).all(...lastTrainingDays);
+    const absMap = {};
+    absRows.forEach((r) => { absMap[r.player_id] = r.n; });
+    atRisk = decorated.map((p) => {
+      const reasons = [];
+      const abs = absMap[p.id] || 0;
+      if (p.sub_state === 'expired') reasons.push(`اشتراكه منتهي من ${-p.days_left} يوم وماجددش`);
+      else if (p.sub_state === 'grace') reasons.push('اشتراكه خلص ولسه في فترة السماح');
+      if (abs >= 3) reasons.push(`غاب ${abs} من آخر ${lastTrainingDays.length} تمرينات`);
+      else if (abs >= 2 && p.days_left !== null && p.days_left <= 7) reasons.push('اشتراكه قرب يخلص وغيابه كتير');
+      return { id: p.id, name: p.name, squad: p.squad, parent_phone: p.parent_phone, reasons };
+    }).filter((p) => p.reasons.length > 0)
+      .sort((a, b) => b.reasons.length - a.reasons.length)
+      .slice(0, 50);
+  }
   res.json({
     today,
+    at_risk: atRisk,
     is_training_day: JSON.parse(getSetting('training_days')).includes(new Date(today + 'T12:00:00Z').getUTCDay()),
     players_total: players.length,
     subs_active: isCoach ? null : activeSubs.length,
@@ -201,10 +230,33 @@ app.get('/api/players/:id', asyncWrap((req, res) => {
   if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
   const squad = coachSquad(req);
   if (squad && p.squad !== squad) return res.status(403).json({ error: 'مش من مجموعتك' });
-  const subs = db.prepare('SELECT * FROM subscriptions WHERE player_id = ? ORDER BY start_date DESC, id DESC').all(p.id);
+  const isCoach = req.user.role === 'coach';
+  let subs = db.prepare('SELECT * FROM subscriptions WHERE player_id = ? ORDER BY start_date DESC, id DESC').all(p.id);
+  if (isCoach) subs = subs.map((s) => Object.assign({}, s, { amount: null })); // المبالغ للإدارة بس
   const attendance = db.prepare('SELECT * FROM attendance WHERE player_id = ? ORDER BY date DESC LIMIT 30').all(p.id);
   const messages = db.prepare('SELECT * FROM messages WHERE player_id = ? ORDER BY id DESC LIMIT 30').all(p.id);
-  res.json(Object.assign(decoratePlayer(p, today), { subscriptions: subs, attendance, messages }));
+  const contact_log = db.prepare('SELECT * FROM contact_log WHERE player_id = ? ORDER BY id DESC LIMIT 50').all(p.id);
+  const out = Object.assign(decoratePlayer(p, today), { subscriptions: subs, attendance, messages, contact_log });
+  if (isCoach && out.subscription) out.subscription = Object.assign({}, out.subscription, { amount: null });
+  res.json(out);
+}));
+
+// Parent contact log: full roles for any player, coach for his squad only.
+app.post('/api/players/:id/contact', asyncWrap((req, res) => {
+  if (req.user.role === 'staff') return res.status(403).json({ error: 'مش مسموح' });
+  const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
+  const squad = coachSquad(req);
+  if (squad && p.squad !== squad) return res.status(403).json({ error: 'مش من مجموعتك' });
+  const type = String((req.body && req.body.type) || 'أخرى').slice(0, 30);
+  const note = String((req.body && req.body.note) || '').trim().slice(0, 500);
+  if (!note) return res.status(400).json({ error: 'اكتب ملاحظة التواصل' });
+  const staffRow = db.prepare('SELECT name FROM staff WHERE user_id = ?').get(req.user.id);
+  const staffName = staffRow ? staffRow.name : req.user.username;
+  const info = db.prepare(
+    'INSERT INTO contact_log (player_id, type, note, staff_name) VALUES (?,?,?,?)'
+  ).run(p.id, type, note, staffName);
+  res.status(201).json(db.prepare('SELECT * FROM contact_log WHERE id=?').get(info.lastInsertRowid));
 }));
 
 app.put('/api/players/:id', asyncWrap((req, res) => {

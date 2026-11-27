@@ -222,6 +222,15 @@ function seedIfEmpty() {
     });
   });
 
+  // Demo parent-contact log entries.
+  const demoIds = db.prepare('SELECT id FROM players ORDER BY id LIMIT 20').all().map((r) => r.id);
+  const insContact = db.prepare(
+    'INSERT INTO contact_log (player_id, type, note, staff_name, created_at) VALUES (?,?,?,?,?)'
+  );
+  insContact.run(demoIds[5], 'اشتراك', 'كلمنا والده بخصوص التجديد وقال هيجدد آخر الأسبوع', 'أ مريم المصري', addDays(today, -2) + ' 14:30:00');
+  insContact.run(demoIds[5], 'غياب', 'والدته اتصلت: عنده امتحانات الأسبوع ده وهيحضر من الخميس', 'أ مريم المصري', addDays(today, -4) + ' 12:10:00');
+  insContact.run(demoIds[17], 'شكوى أو استفسار', 'والده سأل عن مواعيد التدريب في رمضان', 'م محمد رزق', addDays(today, -1) + ' 18:45:00');
+
   const insertExp = db.prepare('INSERT INTO expenses (title, category, amount, date) VALUES (?,?,?,?)');
   insertExp.run('إيجار الملعب - الشهر ده', 'إيجار', 3000, today.slice(0, 8) + '01');
   insertExp.run('كرات ومعدات تدريب', 'معدات', 1200, addDays(today, -6));

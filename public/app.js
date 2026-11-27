@@ -185,6 +185,14 @@ async function renderDashboard() {
         </div>
         ${stateBadge({ sub_state: p.sub_state, days_left: p.days_left })}
       </div>`).join('') : '<div class="empty">مفيش تجديدات قريبة 👌</div>'}
+    <h2 class="section">⚠️ اشتراكات معرضة للتوقف (${d.at_risk.length})</h2>
+    ${d.at_risk.length ? d.at_risk.map((p) => `
+      <div class="list-item" onclick="location.hash='#/player/${p.id}'">
+        <div class="grow">
+          <div class="name">${esc(p.name)}${p.squad ? ' - ' + esc(p.squad) : ''}</div>
+          <div class="sub">${p.reasons.map(esc).join(' • ')}${p.parent_phone ? ` • <a href="tel:${esc(p.parent_phone)}" onclick="event.stopPropagation()">${esc(p.parent_phone)}</a>` : ''}</div>
+        </div>
+      </div>`).join('') : '<div class="empty">مفيش اشتراكات في خطر 👌</div>'}
     <div class="btn-row">
       <a class="btn secondary" href="#/messages">الرسائل الجاهزة (${d.draft_messages})</a>
       <button class="btn" id="gen-btn">تحديث التذكيرات</button>
@@ -292,6 +300,7 @@ async function renderPlayers() {
 // ---------------- Player detail ----------------
 async function renderPlayer(id) {
   pageTitle.textContent = 'ملف اللاعب';
+  const fullRole = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
   const p = await api('/players/' + id);
   app.innerHTML = `
     <div class="card">
@@ -305,16 +314,16 @@ async function renderPlayer(id) {
       <div class="kv"><span class="k">تاريخ الميلاد</span><span>${esc(p.birth_date || '-')}</span></div>
       ${p.subscription ? `
       <div class="kv"><span class="k">الاشتراك الحالي</span><span>${p.subscription.start_date} ← ${p.subscription.end_date}</span></div>
-      <div class="kv"><span class="k">المبلغ</span><span>${p.subscription.amount} جنيه / ${p.subscription.months} شهر</span></div>` :
+      ${p.subscription.amount !== null && p.subscription.amount !== undefined ? `<div class="kv"><span class="k">المبلغ</span><span>${p.subscription.amount} جنيه / ${p.subscription.months} شهر</span></div>` : ''}` :
       '<div class="note" style="margin-top:6px">مفيش اشتراك مسجل لسه.</div>'}
-      <div class="btn-row">
+      ${fullRole ? `<div class="btn-row">
         <button class="btn" id="renew-btn">${p.subscription ? 'تجديد اشتراك' : 'اشتراك جديد'}</button>
         <button class="btn secondary" id="edit-btn">تعديل البيانات</button>
-      </div>
+      </div>` : ''}
     </div>
     <h2 class="section">سجل الاشتراكات</h2>
     ${p.subscriptions.length ? p.subscriptions.map((s) => `
-      <div class="card"><div class="kv"><span class="k">${s.start_date} ← ${s.end_date}</span><span>${s.amount} جنيه (${s.months} شهر)</span></div></div>
+      <div class="card"><div class="kv"><span class="k">${s.start_date} ← ${s.end_date}</span><span>${s.amount !== null && s.amount !== undefined ? `${s.amount} جنيه (${s.months} شهر)` : 'اشتراك ' + s.months + ' شهر'}</span></div></div>
     `).join('') : '<div class="empty">لا يوجد</div>'}
     <h2 class="section">آخر الحضور</h2>
     ${p.attendance.length ? p.attendance.map((a) => `
@@ -323,8 +332,36 @@ async function renderPlayer(id) {
     <h2 class="section">الرسائل</h2>
     ${p.messages.length ? p.messages.map((m) => `
       <div class="card"><div class="kv"><span class="k">${MSG_TYPES[m.type] || m.type}</span><span>${m.status === 'sent' ? '✅ اتبعتت' : m.status === 'dismissed' ? 'اتجاهلت' : '📝 مسودة'}</span></div></div>
-    `).join('') : '<div class="empty">لا يوجد</div>'}`;
-  document.getElementById('renew-btn').onclick = async () => {
+    `).join('') : '<div class="empty">لا يوجد</div>'}
+    <h2 class="section">سجل التواصل مع ولي الأمر</h2>
+    <div class="card">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="cl-type" style="flex:1;min-width:120px">
+          <option>غياب</option>
+          <option>اشتراك</option>
+          <option>سلوك</option>
+          <option>شكوى أو استفسار</option>
+          <option>أخرى</option>
+        </select>
+        <input id="cl-note" placeholder="مثال: كلمنا والده بخصوص الغياب المتكرر" style="flex:3;min-width:180px" />
+        <button class="btn" id="cl-add">حفظ</button>
+      </div>
+    </div>
+    ${p.contact_log && p.contact_log.length ? p.contact_log.map((c) => `
+      <div class="card">
+        <div class="kv"><span class="k">${esc(c.type)}</span><span>${esc((c.created_at || '').slice(0, 10))} • ${esc(c.staff_name || '')}</span></div>
+        <div style="margin-top:4px">${esc(c.note || '')}</div>
+      </div>
+    `).join('') : '<div class="empty">مفيش تواصل مسجل لسه</div>'}`;
+  document.getElementById('cl-add').onclick = async () => {
+    const note = document.getElementById('cl-note').value.trim();
+    if (!note) { toast('اكتب ملاحظة التواصل الأول'); return; }
+    await api(`/players/${id}/contact`, { body: { type: document.getElementById('cl-type').value, note } });
+    toast('اتسجل التواصل ✅');
+    renderPlayer(id);
+  };
+  const renewBtn = document.getElementById('renew-btn');
+  if (renewBtn) renewBtn.onclick = async () => {
     const plans = await api('/plans');
     const planOpts = Object.entries(plans).map(([k, v]) =>
       `<option value="${k}">${v.label} - ${v.amount} جنيه</option>`).join('');
@@ -363,7 +400,8 @@ async function renderPlayer(id) {
       renderPlayer(id);
     };
   };
-  document.getElementById('edit-btn').onclick = () => {
+  const editBtn = document.getElementById('edit-btn');
+  if (editBtn) editBtn.onclick = () => {
     openModal(`
     <h3>تعديل بيانات ${esc(p.name)}</h3>
     <label>اسم اللاعب</label><input id="e-name" value="${esc(p.name)}" />
