@@ -173,8 +173,10 @@ async function renderDashboard() {
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
       <div class="card stat"><div class="num">${d.collected_month}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
-      <div class="card stat"><div class="num">${d.present_today}/${d.subs_active}</div><div class="lbl">حضور النهاردة${d.is_training_day ? '' : ' (مفيش تدريب)'}</div></div>
+      <div class="card stat" id="att-card" style="cursor:pointer" title="اضغط لتفصيل المجموعات"><div class="num">${d.present_today} ✅ / ${d.absent_today} ❌</div><div class="lbl">حضور النهاردة - لسه ${d.players_total - d.present_today - d.absent_today} ما اتسجلش${d.is_training_day ? '' : ' (مفيش تدريب)'} - اضغط للتفصيل</div></div>
+      <div class="card stat"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال السنة (الشهر ده: ${d.dropout_month})</div></div>
     </div>
+    <div id="squad-att" class="hidden"></div>
     <div id="coaches-box"></div>
     <h2 class="section">تجديدات مستنية (خلال 7 أيام أو متأخرة)</h2>
     ${d.renewals_due.length ? d.renewals_due.map((p) => `
@@ -193,6 +195,25 @@ async function renderDashboard() {
     const r = await api('/messages/generate');
     toast(`اتعمل ${r.renewals} تذكير جديد`);
     renderDashboard();
+  };
+  const attCard = document.getElementById('att-card');
+  if (attCard) attCard.onclick = () => {
+    const box = document.getElementById('squad-att');
+    const showing = !box.classList.contains('hidden');
+    if (showing) { box.classList.add('hidden'); return; }
+    box.innerHTML = `
+      <h2 class="section">حضور النهاردة حسب المجموعة</h2>
+      ${d.squad_attendance.length ? d.squad_attendance.map((s) => `
+        <div class="list-item" style="cursor:default">
+          <div class="grow">
+            <div class="name">${esc(s.squad || 'بدون مجموعة')}</div>
+            <div class="sub">${s.coaches.length ? esc(s.coaches.join('، ')) : ''}</div>
+          </div>
+          ${s.present === 0 && s.absent === 0
+            ? `<span class="badge grace">لسه ما اتسجلش (${s.total} لاعب)</span>`
+            : `<span class="badge active">✅ ${s.present}</span> <span class="badge expired">❌ ${s.absent}</span> <span class="badge none">من ${s.total}</span>`}
+        </div>`).join('') : '<div class="empty">لسه مفيش تسجيل النهاردة</div>'}`;
+    box.classList.remove('hidden');
   };
   if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager')) {
     try {
@@ -221,8 +242,8 @@ async function renderDashboard() {
         <h2 class="section">أكتر اللاعبين حضورًا الشهر ده</h2>
         ${topAttendeeRows(m.top_attendees)}`);
       document.getElementById('coaches-box').insertAdjacentHTML('beforeend', `
-        <h2 class="section">المنقطعين عن التدريب</h2>
-        ${dropoutBox(m)}
+        <h2 class="section">المنقطعين عن التدريب (${m.dropout_year} لاعب)</h2>
+        ${dropoutRows(m.dropouts)}
         <h2 class="section">الغائبين الشهر ده</h2>
         ${absenteeRows(m.absentees)}`);
     } catch (e) {}
@@ -262,6 +283,7 @@ async function renderPlayers() {
     <label>اسم اللاعب *</label><input id="f-name" />
     <label>اسم ولي الأمر</label><input id="f-parent" />
     <label>رقم واتساب ولي الأمر</label><input id="f-phone" inputmode="tel" placeholder="01xxxxxxxxx" />
+    <label>تاريخ الميلاد</label><input id="f-birth" type="date" />
     <label>المجموعة السنية</label>
     <select id="f-age"><option>تحت 8</option><option selected>تحت 10</option><option>تحت 12</option><option>تحت 14</option><option>تحت 16</option></select>
     <label>ملاحظات</label><input id="f-notes" />
@@ -275,6 +297,7 @@ async function renderPlayers() {
         name: document.getElementById('f-name').value,
         parent_name: document.getElementById('f-parent').value,
         parent_phone: document.getElementById('f-phone').value,
+        birth_date: document.getElementById('f-birth').value || null,
         age_group: document.getElementById('f-age').value,
         notes: document.getElementById('f-notes').value
       }});
@@ -299,6 +322,7 @@ async function renderPlayer(id) {
       <div class="kv"><span class="k">المجموعة</span><span>${esc(p.age_group || '-')}</span></div>
       <div class="kv"><span class="k">ولي الأمر</span><span>${esc(p.parent_name || '-')}</span></div>
       <div class="kv"><span class="k">واتساب</span><span>${esc(p.parent_phone || '-')}</span></div>
+      <div class="kv"><span class="k">تاريخ الميلاد</span><span>${esc(p.birth_date || '-')}</span></div>
       ${p.subscription ? `
       <div class="kv"><span class="k">الاشتراك الحالي</span><span>${p.subscription.start_date} ← ${p.subscription.end_date}</span></div>
       <div class="kv"><span class="k">المبلغ</span><span>${p.subscription.amount} جنيه / ${p.subscription.months} شهر</span></div>` :
@@ -365,6 +389,7 @@ async function renderPlayer(id) {
     <label>اسم اللاعب</label><input id="e-name" value="${esc(p.name)}" />
     <label>اسم ولي الأمر</label><input id="e-parent" value="${esc(p.parent_name || '')}" />
     <label>رقم الواتساب</label><input id="e-phone" value="${esc(p.parent_phone || '')}" />
+    <label>تاريخ الميلاد</label><input id="e-birth" type="date" value="${esc(p.birth_date || '')}" />
     <label>المجموعة السنية</label>
     <select id="e-age">${['تحت 8','تحت 10','تحت 12','تحت 14','تحت 16'].map((a) =>
       `<option ${a === p.age_group ? 'selected' : ''}>${a}</option>`).join('')}</select>
@@ -383,6 +408,7 @@ async function renderPlayer(id) {
       name: document.getElementById('e-name').value,
       parent_name: document.getElementById('e-parent').value,
       parent_phone: document.getElementById('e-phone').value,
+      birth_date: document.getElementById('e-birth').value || null,
       age_group: document.getElementById('e-age').value,
       status: document.getElementById('e-status').value,
       notes: document.getElementById('e-notes').value
@@ -405,6 +431,18 @@ function trainingDayRows(days) {
       ${t.future ? '<span class="badge none">جاي</span>'
         : t.recorded ? `<span class="badge active">✅ ${t.present}</span> <span class="badge expired">❌ ${t.absent}</span>`
         : '<span class="badge grace">ماتسجلش</span>'}
+    </div>`).join('');
+}
+
+function dropoutRows(dropouts) {
+  if (!dropouts || !dropouts.length) return '<div class="empty">مفيش لاعبين منقطعين 👌</div>';
+  return dropouts.map((p) => `
+    <div class="list-item" style="cursor:default">
+      <div class="grow">
+        <div class="name">${esc(p.name)}${p.squad ? ' - ' + esc(p.squad) : ''}</div>
+        <div class="sub">تاريخ الميلاد: ${esc(p.birth_date || '-')} • ولي الأمر: ${esc(p.parent_name || '-')} ${p.parent_phone ? `<a href="tel:${esc(p.parent_phone)}">${esc(p.parent_phone)}</a>` : ''}</div>
+      </div>
+      <span class="badge expired">آخر حضور ${p.last_present} (من ${p.since_days} يوم)</span>
     </div>`).join('');
 }
 

@@ -95,8 +95,44 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
   const att = squad
     ? db.prepare(`SELECT COUNT(*) AS present FROM attendance a JOIN players p ON p.id=a.player_id WHERE a.date = ? AND a.present = 1 AND p.squad = ?`).get(today, squad)
     : db.prepare(`SELECT COUNT(*) AS present FROM attendance WHERE date = ? AND present = 1`).get(today);
+  const absentToday = squad
+    ? db.prepare(`SELECT COUNT(*) AS n FROM attendance a JOIN players p ON p.id=a.player_id WHERE a.date = ? AND a.present = 0 AND p.squad = ?`).get(today, squad).n
+    : db.prepare(`SELECT COUNT(*) AS n FROM attendance WHERE date = ? AND present = 0`).get(today).n;
   const drafts = db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE status='draft'`).get();
   const isCoach = req.user.role === 'coach';
+  // Dropout counts (admin/manager): last recorded presence 14+ days ago.
+  let dropoutMonth = 0;
+  let dropoutYear = 0;
+  if (!isCoach) {
+    const lastRows = db.prepare(
+      `SELECT p.id, MAX(a.date) AS last_present FROM players p
+       JOIN attendance a ON a.player_id = p.id AND a.present = 1
+       WHERE p.status = 'active' GROUP BY p.id`
+    ).all();
+    lastRows.forEach((r) => {
+      const since = diffDays(r.last_present, today);
+      if (since >= 14 && since <= 365) {
+        dropoutYear++;
+        if (since <= 30) dropoutMonth++;
+      }
+    });
+  }
+  // Per-squad attendance breakdown for today (who saved what).
+  const squadRows = squad ? [] : db.prepare(
+    `SELECT p.squad,
+            SUM(CASE WHEN a.present = 1 THEN 1 ELSE 0 END) AS present,
+            SUM(CASE WHEN a.present = 0 THEN 1 ELSE 0 END) AS absent
+     FROM attendance a JOIN players p ON p.id = a.player_id
+     WHERE a.date = ? GROUP BY p.squad ORDER BY p.squad`
+  ).all(today);
+  const staffBySquad = {};
+  const squadTotals = {};
+  if (!squad) {
+    db.prepare(`SELECT name, squad FROM staff WHERE squad IS NOT NULL AND (role LIKE '%مدرب%' OR role LIKE '%حراس%')`).all()
+      .forEach((c) => { (staffBySquad[c.squad] = staffBySquad[c.squad] || []).push(c.name); });
+    db.prepare(`SELECT squad, COUNT(*) AS n FROM players WHERE status='active' GROUP BY squad`).all()
+      .forEach((r) => (squadTotals[r.squad] = r.n));
+  }
   res.json({
     today,
     is_training_day: JSON.parse(getSetting('training_days')).includes(new Date(today + 'T12:00:00Z').getUTCDay()),
@@ -109,6 +145,19 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
     collected_month: isCoach ? null : collected.total,
     payments_month: isCoach ? null : collected.n,
     present_today: att.present,
+    absent_today: absentToday,
+    dropout_month: isCoach ? null : dropoutMonth,
+    dropout_year: isCoach ? null : dropoutYear,
+    squad_attendance: Object.keys(squadTotals).sort().map((sq) => {
+      const r = squadRows.find((x) => x.squad === sq);
+      return {
+        squad: sq,
+        present: r ? r.present : 0,
+        absent: r ? r.absent : 0,
+        total: squadTotals[sq] || 0,
+        coaches: staffBySquad[sq] || []
+      };
+    }),
     draft_messages: isCoach ? null : drafts.n
   });
 }));
@@ -137,11 +186,12 @@ app.get('/api/players', asyncWrap((req, res) => {
 
 app.post('/api/players', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
-  const { name, parent_name, parent_phone, age_group, notes } = req.body || {};
+  const { name, parent_name, parent_phone, age_group, notes, birth_date, squad } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'اسم اللاعب مطلوب' });
   const info = db.prepare(
-    `INSERT INTO players (name, parent_name, parent_phone, age_group, notes) VALUES (?,?,?,?,?)`
-  ).run(String(name).trim(), parent_name || null, parent_phone || null, age_group || null, notes || null);
+    `INSERT INTO players (name, parent_name, parent_phone, age_group, notes, birth_date, squad) VALUES (?,?,?,?,?,?,?)`
+  ).run(String(name).trim(), parent_name || null, parent_phone || null, age_group || null, notes || null,
+    /^\d{4}-\d{2}-\d{2}$/.test(String(birth_date || '')) ? birth_date : null, squad || null);
   res.status(201).json(decoratePlayer(db.prepare('SELECT * FROM players WHERE id=?').get(info.lastInsertRowid), todayCairo()));
 }));
 
@@ -161,9 +211,9 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
   const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id);
   if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
-  const { name, parent_name, parent_phone, age_group, notes, status } = req.body || {};
+  const { name, parent_name, parent_phone, age_group, notes, status, birth_date } = req.body || {};
   db.prepare(
-    `UPDATE players SET name=?, parent_name=?, parent_phone=?, age_group=?, notes=?, status=? WHERE id=?`
+    `UPDATE players SET name=?, parent_name=?, parent_phone=?, age_group=?, notes=?, status=?, birth_date=? WHERE id=?`
   ).run(
     name !== undefined ? name : p.name,
     parent_name !== undefined ? parent_name : p.parent_name,
@@ -171,6 +221,7 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
     age_group !== undefined ? age_group : p.age_group,
     notes !== undefined ? notes : p.notes,
     status !== undefined ? status : p.status,
+    birth_date !== undefined ? (/^\d{4}-\d{2}-\d{2}$/.test(String(birth_date)) ? birth_date : null) : p.birth_date,
     p.id
   );
   res.json(decoratePlayer(db.prepare('SELECT * FROM players WHERE id=?').get(p.id), todayCairo()));
@@ -291,8 +342,8 @@ app.get('/api/attendance/month', asyncWrap((req, res) => {
      WHERE a.date >= ? AND a.date <= ? ${squad ? 'AND p.squad = ?' : ''}`
   ).all(...params);
   const players = squad
-    ? db.prepare(`SELECT id, name FROM players WHERE status='active' AND squad = ? ORDER BY name`).all(squad)
-    : db.prepare(`SELECT id, name FROM players WHERE status='active' ORDER BY name`).all();
+    ? db.prepare(`SELECT * FROM players WHERE status='active' AND squad = ? ORDER BY name`).all(squad)
+    : db.prepare(`SELECT * FROM players WHERE status='active' ORDER BY name`).all();
   const byDate = {};
   const byPlayer = {};
   attRows.forEach((r) => {
@@ -316,6 +367,8 @@ app.get('/api/attendance/month', asyncWrap((req, res) => {
       absent: c ? c.absent : 0
     });
   }
+  const playerInfo = {};
+  players.forEach((p) => (playerInfo[p.id] = p));
   const perPlayer = players.map((p) => {
     const c = byPlayer[p.id] || { present_days: 0, absent_days: 0 };
     return { id: p.id, name: p.name, present_days: c.present_days, absent_days: c.absent_days };
@@ -329,13 +382,26 @@ app.get('/api/attendance/month', asyncWrap((req, res) => {
   ).all(...(squad ? [squad] : []));
   let dropoutMonth = 0;
   let dropoutYear = 0;
+  const dropoutDetail = [];
   lastRows.forEach((r) => {
     const since = diffDays(r.last_present, today);
     if (since >= 14 && since <= 365) {
       dropoutYear++;
       if (since <= 30) dropoutMonth++;
+      const info = playerInfo[r.id] || {};
+      dropoutDetail.push({
+        id: r.id,
+        name: info.name || '',
+        birth_date: info.birth_date || null,
+        parent_name: info.parent_name || null,
+        parent_phone: info.parent_phone || null,
+        squad: info.squad || null,
+        last_present: r.last_present,
+        since_days: since
+      });
     }
   });
+  dropoutDetail.sort((a, b) => b.since_days - a.since_days);
   res.json({
     month,
     training_days: days,
@@ -343,7 +409,8 @@ app.get('/api/attendance/month', asyncWrap((req, res) => {
     absentees: perPlayer.filter((p) => p.absent_days > 0).sort((a, b) => b.absent_days - a.absent_days || a.name.localeCompare(b.name, 'ar')),
     top_attendees: perPlayer.filter((p) => p.present_days > 0).sort((a, b) => b.present_days - a.present_days || a.name.localeCompare(b.name, 'ar')).slice(0, 5),
     dropout_month: dropoutMonth,
-    dropout_year: dropoutYear
+    dropout_year: dropoutYear,
+    dropouts: squad ? [] : dropoutDetail // التفاصيل للإدارة بس، المدرب يشوف الأعداد بس
   });
 }));
 
