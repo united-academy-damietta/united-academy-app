@@ -234,7 +234,12 @@ app.get('/api/players', asyncWrap((req, res) => {
   } else {
     rows = db.prepare(`SELECT * FROM players ORDER BY name`).all();
   }
-  res.json(rows.map((p) => decoratePlayer(p, today)));
+  const isCoach = req.user.role === 'coach';
+  res.json(rows.map((p) => {
+    const d = decoratePlayer(p, today);
+    if (isCoach) { d.sub_state = null; d.days_left = null; d.subscription = null; } // حالة الاشتراك والأيام الفاضلة للإدارة بس
+    return d;
+  }));
 }));
 
 app.post('/api/players', asyncWrap((req, res) => {
@@ -262,7 +267,9 @@ app.get('/api/players/:id', asyncWrap((req, res) => {
   const contact_log = db.prepare('SELECT * FROM contact_log WHERE player_id = ? ORDER BY id DESC LIMIT 50').all(p.id);
   const evaluations = db.prepare('SELECT * FROM evaluations WHERE player_id = ? ORDER BY month DESC LIMIT 12').all(p.id);
   const out = Object.assign(decoratePlayer(p, today), { subscriptions: subs, attendance, messages, contact_log, evaluations });
-  if (isCoach && out.subscription) out.subscription = Object.assign({}, out.subscription, { amount: null });
+  if (isCoach) { // المدرب ميشوفش حالة الاشتراك ولا الأيام الفاضلة ولا سجل الاشتراكات ولا مسودات التجديد
+    out.sub_state = null; out.days_left = null; out.subscription = null; out.subscriptions = []; out.messages = [];
+  }
   res.json(out);
 }));
 

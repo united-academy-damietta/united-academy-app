@@ -98,6 +98,7 @@ const MSG_TYPES = {
 };
 
 function stateBadge(p) {
+  if (p.sub_state === null || p.sub_state === undefined) return ''; // مخفي عن المدرب
   const s = STATE[p.sub_state] || STATE.none;
   let extra = '';
   if (p.days_left !== null && p.days_left !== undefined) {
@@ -403,6 +404,7 @@ async function renderPlayer(id) {
   pageTitle.textContent = 'ملف اللاعب';
   const fullRole = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
   const p = await api('/players/' + id);
+  const hideSub = p.sub_state === null; // المدرب: من غير أي حاجة عن الاشتراك
   app.innerHTML = `
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -413,27 +415,27 @@ async function renderPlayer(id) {
       <div class="kv"><span class="k">ولي الأمر</span><span>${esc(p.parent_name || '-')}</span></div>
       <div class="kv"><span class="k">واتساب</span><span>${esc(p.parent_phone || '-')}</span></div>
       <div class="kv"><span class="k">تاريخ الميلاد</span><span>${esc(p.birth_date || '-')}</span></div>
-      ${p.subscription ? `
+      ${hideSub ? '' : (p.subscription ? `
       <div class="kv"><span class="k">الاشتراك الحالي</span><span>${p.subscription.start_date} ← ${p.subscription.end_date}</span></div>
       ${p.subscription.amount !== null && p.subscription.amount !== undefined ? `<div class="kv"><span class="k">المبلغ</span><span>${p.subscription.amount} جنيه / ${p.subscription.months} شهر</span></div>` : ''}` :
-      '<div class="note" style="margin-top:6px">مفيش اشتراك مسجل لسه.</div>'}
+      '<div class="note" style="margin-top:6px">مفيش اشتراك مسجل لسه.</div>')}
       ${fullRole ? `<div class="btn-row">
         <button class="btn" id="renew-btn">${p.subscription ? 'تجديد اشتراك' : 'اشتراك جديد'}</button>
         <button class="btn secondary" id="edit-btn">تعديل البيانات</button>
       </div>` : ''}
     </div>
-    <h2 class="section">سجل الاشتراكات</h2>
+    ${hideSub ? '' : `<h2 class="section">سجل الاشتراكات</h2>
     ${p.subscriptions.length ? p.subscriptions.map((s) => `
       <div class="card"><div class="kv"><span class="k">${s.start_date} ← ${s.end_date}</span><span>${s.amount !== null && s.amount !== undefined ? `${s.amount} جنيه (${s.months} شهر)` : 'اشتراك ' + s.months + ' شهر'}</span></div></div>
-    `).join('') : '<div class="empty">لا يوجد</div>'}
+    `).join('') : '<div class="empty">لا يوجد</div>'}`}
     <h2 class="section">آخر الحضور</h2>
     ${p.attendance.length ? p.attendance.map((a) => `
       <div class="card"><div class="kv"><span class="k">${a.date}</span><span>${a.present ? '✅ حاضر' : '❌ غائب'}</span></div></div>
     `).join('') : '<div class="empty">لا يوجد</div>'}
-    <h2 class="section">الرسائل</h2>
+    ${hideSub ? '' : `<h2 class="section">الرسائل</h2>
     ${p.messages.length ? p.messages.map((m) => `
       <div class="card"><div class="kv"><span class="k">${MSG_TYPES[m.type] || m.type}</span><span>${m.status === 'sent' ? '✅ اتبعتت' : m.status === 'dismissed' ? 'اتجاهلت' : '📝 مسودة'}</span></div></div>
-    `).join('') : '<div class="empty">لا يوجد</div>'}
+    `).join('') : '<div class="empty">لا يوجد</div>'}`}
     <h2 class="section">التقييم الشهري</h2>
     ${(() => {
       const curMonth = todayLocal().slice(0, 7);
