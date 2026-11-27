@@ -1221,6 +1221,89 @@ async function renderTrainingDay() {
     <div class="sub" style="text-align:center;margin-top:8px">الأرقام بتتحدث مع حفظ كل مدرب - افتح الشاشة تاني للتحديث</div>`;
 }
 
+// ---------------- New subscriber registration (admin/manager only) ----------------
+async function renderSubscribe() {
+  pageTitle.textContent = 'تسجيل اشتراك جديد';
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) {
+    app.innerHTML = '<div class="empty">مش مسموح - الشاشة دي لمسؤولة الاشتراكات والإدارة بس</div>';
+    return;
+  }
+  const plans = await api('/plans');
+  const planOpts = Object.entries(plans).map(([k, v]) =>
+    `<option value="${k}">${v.label} - ${v.amount} جنيه</option>`).join('');
+  app.innerHTML = `
+    <div class="card">
+      <h2 class="section" style="margin-top:0">بيانات اللاعب الجديد</h2>
+      <label>اسم اللاعب *</label><input id="r-name" />
+      <label>اسم ولي الأمر</label><input id="r-parent" />
+      <label>رقم واتساب ولي الأمر</label><input id="r-phone" inputmode="tel" placeholder="01xxxxxxxxx" />
+      <label>تاريخ الميلاد</label><input id="r-birth" type="date" />
+      <label>المجموعة السنية</label>
+      <select id="r-age"><option>تحت 8</option><option selected>تحت 10</option><option>تحت 12</option><option>تحت 14</option><option>تحت 16</option></select>
+      <label>الفرقة</label>
+      <select id="r-squad"><option value="">-</option><option>كيدز 2019-2021</option><option>2017-2018</option><option>2015-2016</option><option>2013-2014</option><option>حراس</option></select>
+      <label>ملاحظات</label><input id="r-notes" />
+    </div>
+    <div class="card">
+      <h2 class="section" style="margin-top:0">الاشتراك والدفع</h2>
+      <label>تاريخ البداية</label><input id="r-start" type="date" value="${todayLocal()}" />
+      <label>خطة الاشتراك</label>
+      <select id="r-plan">${planOpts}<option value="custom">مخصص</option></select>
+      <div id="r-custom" class="hidden">
+        <label>المدة (شهور)</label><input id="r-months" type="number" min="1" value="1" />
+        <label>المبلغ (جنيه)</label><input id="r-amount" type="number" min="0" value="700" />
+      </div>
+      <div id="r-summary" class="note" style="font-weight:bold"></div>
+      <p class="note">بعد الحفظ هتتجهز رسالة تأكيد واتساب كمسودة في شاشة الرسائل - مفيش إرسال تلقائي.</p>
+      <button class="btn" id="r-save" style="width:100%">💾 تسجيل اللاعب والاشتراك</button>
+    </div>
+    <div id="r-done"></div>`;
+  const upd = () => {
+    const plan = document.getElementById('r-plan').value;
+    document.getElementById('r-custom').classList.toggle('hidden', plan !== 'custom');
+    const months = plan === 'custom' ? (parseInt(document.getElementById('r-months').value, 10) || 1) : plans[plan].months;
+    const amount = plan === 'custom' ? (Number(document.getElementById('r-amount').value) || 0) : plans[plan].amount;
+    const start = document.getElementById('r-start').value;
+    document.getElementById('r-summary').textContent = start
+      ? `الاشتراك: ${months} شهر من ${start} - المبلغ: ${amount} جنيه` : '';
+  };
+  ['r-plan', 'r-months', 'r-amount', 'r-start'].forEach((id) => {
+    document.getElementById(id).oninput = upd;
+    document.getElementById(id).onchange = upd;
+  });
+  upd();
+  document.getElementById('r-save').onclick = async () => {
+    try {
+      const plan = document.getElementById('r-plan').value;
+      const body = {
+        name: document.getElementById('r-name').value,
+        parent_name: document.getElementById('r-parent').value,
+        parent_phone: document.getElementById('r-phone').value,
+        birth_date: document.getElementById('r-birth').value || null,
+        age_group: document.getElementById('r-age').value,
+        squad: document.getElementById('r-squad').value || null,
+        notes: document.getElementById('r-notes').value,
+        start_date: document.getElementById('r-start').value
+      };
+      if (plan === 'custom') {
+        body.months = document.getElementById('r-months').value;
+        body.amount = document.getElementById('r-amount').value;
+      } else {
+        body.plan = plan;
+      }
+      const out = await api('/subscriptions/register', { body });
+      document.getElementById('r-done').innerHTML = `
+        <div class="card" style="border-right:4px solid #1a7a3c">
+          <div class="name">✅ اتسجل ${esc(out.player.name)}</div>
+          <div class="sub">اشتراك ${out.subscription.months} شهر من ${out.subscription.start_date} لحد ${out.subscription.end_date} - ${out.subscription.amount} جنيه</div>
+          <div class="sub">رسالة التأكيد جهزة كمسودة في شاشة الرسائل</div>
+          <button class="btn" onclick="location.hash='#/player/${out.player.id}'" style="margin-top:8px">فتح ملف اللاعب</button>
+        </div>`;
+      toast('اتسجل اللاعب والاشتراك ✅');
+    } catch (e) { toast(e.message); }
+  };
+}
+
 const routes = {
   '/': renderDashboard,
   '/training': renderTrainingDay,
@@ -1230,6 +1313,7 @@ const routes = {
   '/expenses': renderExpenses,
   '/staff': renderStaff,
   '/my-att': renderMyAttendance,
+  '/subscribe': renderSubscribe,
   '/settings': renderSettings
 };
 async function route() {

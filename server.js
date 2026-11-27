@@ -362,6 +362,33 @@ app.post('/api/players/:id/subscriptions', asyncWrap((req, res) => {
   res.status(201).json(sub);
 }));
 
+// New-subscriber registration: creates the player AND the first paid subscription in one step.
+// مسؤولة الاشتراكات (مريم) والإدارة بس - المدرب والموظف 403 من السيرفر.
+app.post('/api/subscriptions/register', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return;
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'اسم اللاعب مطلوب' });
+  const pinfo = db.prepare(
+    `INSERT INTO players (name, parent_name, parent_phone, age_group, notes, birth_date, squad) VALUES (?,?,?,?,?,?,?)`
+  ).run(name, b.parent_name || null, b.parent_phone || null, b.age_group || null, b.notes || null,
+    /^\d{4}-\d{2}-\d{2}$/.test(String(b.birth_date || '')) ? b.birth_date : null, b.squad || null);
+  const pid = pinfo.lastInsertRowid;
+  const today = todayCairo();
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(String(b.start_date || '')) ? b.start_date : today;
+  const plan = PLANS[String(b.plan)];
+  const months = plan ? plan.months : (parseInt(b.months, 10) || 1);
+  const amount = plan ? plan.amount : (Number(b.amount) || 0);
+  const end = addMonths(start, months);
+  const sinfo = db.prepare(
+    `INSERT INTO subscriptions (player_id, start_date, months, amount, end_date) VALUES (?,?,?,?,?)`
+  ).run(pid, start, months, amount, end);
+  const sub = db.prepare('SELECT * FROM subscriptions WHERE id=?').get(sinfo.lastInsertRowid);
+  automation.confirmationDraft(pid, sub); // draft only - human sends it
+  const player = db.prepare('SELECT * FROM players WHERE id=?').get(pid);
+  res.status(201).json({ player: decoratePlayer(player, today), subscription: sub });
+}));
+
 // ---------- attendance ----------
 app.get('/api/attendance', asyncWrap((req, res) => {
   const today = todayCairo();
