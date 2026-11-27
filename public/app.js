@@ -242,6 +242,10 @@ async function renderDashboard() {
     });
     return;
   }
+  let fin = null;
+  if (currentUser && currentUser.username === 'anagar') { // صافي الشهر لحساب أحمد النجار بس
+    try { fin = await api('/finance'); } catch (e) {}
+  }
   window.toggleDashList = (id) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -266,6 +270,14 @@ async function renderDashboard() {
       </div>
       <div class="note" style="margin:0">اتحصل ${fmt(d.collected_month)} من ${fmt(d.collection_due)} جنيه مستحق${d.late_due_amount ? ' (منهم ' + fmt(d.late_due_amount) + ' على المتأخرين)' : ''}</div>
     </div>` : '';
+  const netCardHtml = (fin && fin.net_month !== null && fin.net_month !== undefined) ? `
+    <div class="card" style="margin-top:10px;background:#141414;color:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="font-weight:800">صافي ربح الشهر 💰</div>
+        <div style="font-weight:800;font-size:20px;color:${fin.net_month >= 0 ? '#4ade80' : '#f87171'}">${fmt(fin.net_month)} جنيه</div>
+      </div>
+      <div class="note" style="margin:0;color:#d1d5db">المتحصلات ${fmt(fin.revenue_month)} − المصاريف ${fmt(fin.expenses_month)}</div>
+    </div>` : '';
   app.innerHTML = hero + quickBar + `
     <div class="grid">
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
@@ -278,6 +290,7 @@ async function renderDashboard() {
       <div class="card stat" style="cursor:pointer" onclick="toggleDashList('top-att-list')"><div class="num">${d.top_attendance.length ? d.top_attendance[0].pct + '%' : '0'}</div><div class="lbl">أعلى نسبة حضور الشهر ده ✅</div></div>
     </div>
     ${collectionCard}
+    ${netCardHtml}
     <div id="bday-month-list" style="display:none">
     <h2 class="section">🎂 أعياد ميلاد الشهر ده (${d.birthdays_month.length})</h2>
     ${d.birthdays_month.length ? d.birthdays_month.map((p) => `
