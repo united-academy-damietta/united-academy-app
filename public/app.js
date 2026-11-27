@@ -190,7 +190,7 @@ async function renderDashboard() {
       <button class="btn" id="gen-btn">تحديث التذكيرات</button>
     </div>`;
   document.getElementById('gen-btn').onclick = async () => {
-    const r = await api('/messages/generate');
+    const r = await api('/messages/generate', {});
     toast(`اتعمل ${r.renewals} تذكير جديد`);
     renderDashboard();
   };
@@ -751,7 +751,7 @@ async function renderSettings() {
     } catch (e) { toast(e.message); }
   };
   document.getElementById('logout-btn').onclick = async () => {
-    await api('/logout');
+    await api('/logout', {});
     renderLogin();
   };
   document.getElementById('st-save').onclick = async () => {
