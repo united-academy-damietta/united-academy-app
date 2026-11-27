@@ -14,7 +14,7 @@ function applyRoleNav() {
   });
 }
 const pageTitle = document.getElementById('page-title');
-const fmt = (n) => (n === null || n === undefined || n === '' ? '0' : Number(n).toLocaleString('en-US'));
+const fmt = (n) => (n === null || n === undefined || n === '' ? '—' : Number(n).toLocaleString('en-US'));
 
 async function api(path, opts) {
   const res = await fetch('/api' + path, opts ? {
@@ -1591,7 +1591,7 @@ async function renderMore() {
   const links = [];
   if (full) {
     links.push(['#/messages', 'chat', 'الرسائل']);
-    links.push(['#/expenses', 'cash', 'المصاريف']);
+    if (currentUser.role !== 'viewer') links.push(['#/expenses', 'cash', 'المصاريف']);
   }
   links.push(['#/staff', 'cap', 'الجهاز']);
   if (full) links.push(['#/settings', 'gear', 'الإعدادات']);

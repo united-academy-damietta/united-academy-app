@@ -73,7 +73,12 @@ const asyncWrap = (fn) => (req, res) => {
 
 function requireFull(req, res) {
   if (req.user.role === 'admin' || req.user.role === 'manager') return true;
-  if (req.method === 'GET' && req.user.role === 'viewer') return true; // المشاهد يقرأ كل الشاشات (بيانات تجريبية) - الكتابة محظورة فوق
+  res.status(403).json({ error: 'مش مسموح' });
+  return false;
+}
+// قراءة شاشات الإدارة غير المالية: الإدارة + حساب المشاهدة (الفلوس محظورة عليه في endpoints الخاصة بيها)
+function requireReadFull(req, res) {
+  if (req.user.role === 'admin' || req.user.role === 'manager' || req.user.role === 'viewer') return true;
   res.status(403).json({ error: 'مش مسموح' });
   return false;
 }
@@ -249,8 +254,8 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
     renew_next_list: isCoach ? null : renewNextList,
     dropouts_list: isCoach ? null : dropoutsList,
     late_unpaid: isCoach ? null : decorated.filter((p) => p.sub_state === 'grace' || p.sub_state === 'expired').length,
-    collected_month: isCoach ? null : collected.total,
-    payments_month: isCoach ? null : collected.n,
+    collected_month: (isCoach || req.user.role === 'viewer') ? null : collected.total,
+    payments_month: (isCoach || req.user.role === 'viewer') ? null : collected.n,
     present_today: att.present,
     absent_today: absentToday,
     dropout_month: isCoach ? null : dropoutMonth,
@@ -316,7 +321,7 @@ app.get('/api/players/:id', asyncWrap((req, res) => {
   if (squad && p.squad !== squad) return res.status(403).json({ error: 'مش من مجموعتك' });
   const isCoach = req.user.role === 'coach';
   let subs = db.prepare('SELECT * FROM subscriptions WHERE player_id = ? ORDER BY start_date DESC, id DESC').all(p.id);
-  if (isCoach) subs = subs.map((s) => Object.assign({}, s, { amount: null })); // المبالغ للإدارة بس
+  if (isCoach || req.user.role === 'viewer') subs = subs.map((s) => Object.assign({}, s, { amount: null })); // المبالغ للإدارة بس
   const attendance = db.prepare('SELECT * FROM attendance WHERE player_id = ? ORDER BY date DESC LIMIT 30').all(p.id);
   const messages = db.prepare('SELECT * FROM messages WHERE player_id = ? ORDER BY id DESC LIMIT 30').all(p.id);
   const contact_log = db.prepare('SELECT * FROM contact_log WHERE player_id = ? ORDER BY id DESC LIMIT 50').all(p.id);
@@ -326,6 +331,7 @@ app.get('/api/players/:id', asyncWrap((req, res) => {
     out.sub_state = null; out.days_left = null; out.subscription = null; out.subscriptions = []; out.messages = [];
   } else {
     out.payments = db.prepare('SELECT * FROM payments WHERE player_id = ? ORDER BY id DESC LIMIT 30').all(p.id);
+    if (req.user.role === 'viewer') out.payments = out.payments.map((y) => Object.assign({}, y, { amount: null }));
   }
   res.json(out);
 }));
@@ -400,11 +406,16 @@ app.put('/api/players/:id', asyncWrap((req, res) => {
 }));
 
 // ---------- subscriptions ----------
-app.get('/api/plans', asyncWrap((req, res) => res.json(getPlans())));
+app.get('/api/plans', asyncWrap((req, res) => {
+  if (!requireReadFull(req, res)) return;
+  const ps = getPlans();
+  if (req.user.role === 'viewer') Object.values(ps).forEach((p) => { p.amount = null; }); // المشاهد ميشوفش أسعار
+  res.json(ps);
+}));
 
 // كروت الاشتراكات: عدد اللاعبين حسب نوع الاشتراك + قائمة كل نوع (إدارة بس، المدرب 403)
 app.get('/api/subscriptions/overview', asyncWrap((req, res) => {
-  if (!requireFull(req, res)) return;
+  if (!requireReadFull(req, res)) return;
   const latest = db.prepare(
     `SELECT s.*, p.name, p.parent_phone, p.status AS player_status FROM subscriptions s
      JOIN players p ON p.id = s.player_id
@@ -430,7 +441,7 @@ app.get('/api/subscriptions/overview', asyncWrap((req, res) => {
 
 // النسخ الاحتياطي (إدارة بس): الحالة + تشغيل يدوي. الرفع على Drive مقفول لحد موافقة أحمد.
 app.get('/api/backup/status', asyncWrap((req, res) => {
-  if (!requireFull(req, res)) return;
+  if (!requireReadFull(req, res)) return;
   res.json(backup.backupStatus());
 }));
 app.post('/api/backup/run', asyncWrap(async (req, res) => {
@@ -452,8 +463,10 @@ app.put('/api/plans', asyncWrap((req, res) => {
 
 // بنود الاشتراك (الزي/الدوري/السفرية...) - إدارة بس، المدرب ميشوفش فلوس
 app.get('/api/subscription-items', asyncWrap((req, res) => {
-  if (!requireFull(req, res)) return;
-  res.json(db.prepare('SELECT * FROM subscription_items ORDER BY sort, id').all());
+  if (!requireReadFull(req, res)) return;
+  const rows = db.prepare('SELECT * FROM subscription_items ORDER BY sort, id').all();
+  if (req.user.role === 'viewer') rows.forEach((r) => { r.amount = null; });
+  res.json(rows);
 }));
 app.put('/api/subscription-items/:id', asyncWrap((req, res) => {
   if (!requireFull(req, res)) return;
@@ -811,9 +824,10 @@ app.post('/api/password', asyncWrap((req, res) => {
 
 // ---------- settings ----------
 app.get('/api/settings', asyncWrap((req, res) => {
-  if (!requireFull(req, res)) return;
+  if (!requireReadFull(req, res)) return;
   const out = {};
   Object.keys(DEFAULTS).forEach((k) => (out[k] = getSetting(k)));
+  if (req.user.role === 'viewer') ['sub_amount', 'plan_1_price', 'plan_3_price', 'plan_6_price', 'plan_12_price'].forEach((k) => { if (k in out) out[k] = ''; });
   res.json(out);
 }));
 
