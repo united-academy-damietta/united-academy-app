@@ -181,6 +181,29 @@ function seedIfEmpty() {
   });
   tx();
 
+  // لاعبين تجريبيين (معلمين بـ "تجريبي") علشان كروت أنواع الاشتراك تفتح قوائم مش فاضية - يتشالوا قبل البيانات الحقيقية
+  const demoPlayers = [
+    { name: 'تجريبي - لاعب 3 شهور 1', months: 3, amount: 1890 },
+    { name: 'تجريبي - لاعب 3 شهور 2', months: 3, amount: 1890 },
+    { name: 'تجريبي - لاعب 6 شهور 1', months: 6, amount: 3570 },
+    { name: 'تجريبي - لاعب 6 شهور 2', months: 6, amount: 3570 },
+    { name: 'تجريبي - عضو مستقبل 1', months: 1, amount: 400, kind: 'mustaqbal', membership: 'MST-DEMO-01' },
+    { name: 'تجريبي - عضو مستقبل 2', months: 1, amount: 550, kind: 'mustaqbal', membership: 'MST-DEMO-02' }
+  ];
+  const insertDemoP = db.prepare(
+    'INSERT INTO players (name, parent_name, parent_phone, age_group, squad, birth_date, membership_no) VALUES (?,?,?,?,?,?,?)'
+  );
+  const insertDemoSub = db.prepare(
+    'INSERT INTO subscriptions (player_id, start_date, months, amount, end_date, kind) VALUES (?,?,?,?,?,?)'
+  );
+  const demoTx = db.transaction(() => {
+    demoPlayers.forEach((d, i) => {
+      const pid = insertDemoP.run(d.name, 'ولي أمر تجريبي', '01099990' + String(100 + i), '2017-2018', '2017-2018', '2017-03-15', d.membership || null).lastInsertRowid;
+      insertDemoSub.run(pid, today, d.months, d.amount, addMonths(today, d.months), d.kind || 'academy');
+    });
+  });
+  demoTx();
+
   const staffRows = [
     ['ك شهد', 'مدربة', 'كيدز 2019-2021', 'shahd', 'coach'],
     ['ك الاء', 'مدربة', 'كيدز 2019-2021', 'alaa', 'coach'],
