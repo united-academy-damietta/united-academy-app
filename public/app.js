@@ -1601,12 +1601,10 @@ async function route() {
     app.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
 }
-// ضغطة "الرئيسية" ترجع لفوق الصفحة بسكرول سلس حتى لو إحنا فيها أصلًا
+// ضغطة أي تاب في الشريط السفلي ترجع لفوق الصفحة بسكرول سلس حتى لو إحنا فيها أصلًا
 document.querySelectorAll('#bottomnav a').forEach((a) => {
   a.addEventListener('click', () => {
-    if (a.dataset.route === '/') {
-      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
-    }
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
   });
 });
 window.addEventListener('hashchange', route);
