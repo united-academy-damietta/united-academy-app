@@ -223,14 +223,21 @@ async function renderDashboard() {
     });
     return;
   }
+  window.toggleDashList = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const opening = el.style.display === 'none';
+    el.style.display = opening ? '' : 'none';
+    if (opening) el.scrollIntoView({ behavior: 'smooth' });
+  };
   app.innerHTML = hero + `
     <div class="grid">
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
-      <div class="card stat"><div class="num">${d.renew_next_month}</div><div class="lbl">لاعب هيجددوا الشهر الجاي 🔄</div></div>
+      <div class="card stat" style="cursor:pointer" onclick="toggleDashList('renew-next-list')"><div class="num">${d.renew_next_month}</div><div class="lbl">لاعب هيجددوا الشهر الجاي 🔄</div></div>
       <div class="card stat" style="cursor:pointer" onclick="document.getElementById('late-list').scrollIntoView({behavior:'smooth'})"><div class="num">${d.late_unpaid}</div><div class="lbl">متأخرين في الدفع ⚠️</div></div>
       <div class="card stat"><div class="num">${d.collected_month}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
-      <div class="card stat"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال 3 شهور (الشهر ده: ${d.dropout_month})</div></div>
+      <div class="card stat" style="cursor:pointer" onclick="toggleDashList('dropout-list')"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال 3 شهور (الشهر ده: ${d.dropout_month})</div></div>
     </div>
     <div id="coaches-box"></div>
     <h2 class="section" id="late-list">تجديدات مستنية (خلال 7 أيام أو متأخرة)</h2>
@@ -242,6 +249,26 @@ async function renderDashboard() {
         </div>
         ${stateBadge({ sub_state: p.sub_state, days_left: p.days_left })}
       </div>`).join('') : '<div class="empty">مفيش تجديدات قريبة 👌</div>'}
+    <div id="renew-next-list" style="display:none">
+    <h2 class="section">🔄 اللي هيجددوا الشهر الجاي (${d.renew_next_list.length})</h2>
+    ${d.renew_next_list.length ? d.renew_next_list.map((p) => `
+      <div class="list-item" onclick="location.hash='#/player/${p.id}'">
+        <div class="grow">
+          <div class="name">${esc(p.name)}</div>
+          <div class="sub">اشتراكه بينتهي ${p.end_date}${p.parent_phone ? ` • <a href="tel:${esc(p.parent_phone)}" onclick="event.stopPropagation()">${esc(p.parent_phone)}</a>` : ''}</div>
+        </div>
+      </div>`).join('') : '<div class="empty">مفيش تجديدات الشهر الجاي 👌</div>'}
+    </div>
+    <div id="dropout-list" style="display:none">
+    <h2 class="section">🚶 اللاعبين المنقطعين (آخر حضور من 14+ يوم)</h2>
+    ${d.dropouts_list.length ? d.dropouts_list.map((p) => `
+      <div class="list-item" onclick="location.hash='#/player/${p.id}'">
+        <div class="grow">
+          <div class="name">${esc(p.name)}</div>
+          <div class="sub">آخر حضور ${p.last_present} (من ${p.since_days} يوم)${p.parent_phone ? ` • <a href="tel:${esc(p.parent_phone)}" onclick="event.stopPropagation()">${esc(p.parent_phone)}</a>` : ''}</div>
+        </div>
+      </div>`).join('') : '<div class="empty">مفيش لاعبين منقطعين 👌</div>'}
+    </div>
     <h2 class="section">⚠️ اشتراكات معرضة للتوقف (${d.at_risk.length})</h2>
     ${d.at_risk.length ? d.at_risk.map((p) => `
       <div class="list-item" onclick="location.hash='#/player/${p.id}'">

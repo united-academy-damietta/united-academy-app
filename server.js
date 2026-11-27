@@ -115,9 +115,10 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
   // Dropout counts (admin/manager): last recorded presence 14+ days ago.
   let dropoutMonth = 0;
   let dropoutYear = 0;
+  let dropoutsList = [];
   if (!isCoach) {
     const lastRows = db.prepare(
-      `SELECT p.id, MAX(a.date) AS last_present FROM players p
+      `SELECT p.id, p.name, p.parent_phone, MAX(a.date) AS last_present FROM players p
        JOIN attendance a ON a.player_id = p.id AND a.present = 1
        WHERE p.status = 'active' GROUP BY p.id`
     ).all();
@@ -126,8 +127,10 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
       if (since >= 14 && since <= 90) { // المنقطع: غايب من أسبوعين لـ 3 شهور
         dropoutYear++;
         if (since <= 30) dropoutMonth++;
+        dropoutsList.push({ id: r.id, name: r.name, last_present: r.last_present, since_days: since, parent_phone: r.parent_phone });
       }
     });
+    dropoutsList.sort((a, b) => b.since_days - a.since_days);
   }
   // Per-squad attendance breakdown for today (who saved what).
   const squadRows = squad ? [] : db.prepare(
@@ -195,12 +198,15 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
   }
   // تجديدات الشهر القادم (إدارة): تاريخ نهاية الاشتراك الحالي جوه الشهر الكلنداري الجاي
   let renewNextMonth = 0;
+  let renewNextList = [];
   if (!isCoach) {
     const nextStart = addMonths(today.slice(0, 8) + '01', 1);
     const monthAfter = addMonths(today.slice(0, 8) + '01', 2);
-    renewNextMonth = decorated.filter((p) =>
+    renewNextList = decorated.filter((p) =>
       p.subscription && p.subscription.end_date >= nextStart && p.subscription.end_date < monthAfter
-    ).length;
+    ).map((p) => ({ id: p.id, name: p.name, end_date: p.subscription.end_date, parent_phone: p.parent_phone }))
+      .sort((a, b) => a.end_date.localeCompare(b.end_date));
+    renewNextMonth = renewNextList.length;
   }
   const announcements = db.prepare('SELECT * FROM announcements ORDER BY id DESC LIMIT 10').all();
   res.json({
@@ -216,6 +222,8 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
       end_date: p.subscription.end_date
     })),
     renew_next_month: isCoach ? null : renewNextMonth,
+    renew_next_list: isCoach ? null : renewNextList,
+    dropouts_list: isCoach ? null : dropoutsList,
     late_unpaid: isCoach ? null : decorated.filter((p) => p.sub_state === 'grace' || p.sub_state === 'expired').length,
     collected_month: isCoach ? null : collected.total,
     payments_month: isCoach ? null : collected.n,
