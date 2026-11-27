@@ -8,7 +8,9 @@ const NAV_RULES = {
 function applyRoleNav() {
   const allowed = currentUser && NAV_RULES[currentUser.role];
   document.querySelectorAll('#bottomnav a').forEach((a) => {
-    a.style.display = allowed && !allowed.includes(a.dataset.route) ? 'none' : '';
+    // "حضوري" للمدرب بس - الإدارة عندها شاشة الجهاز وتقرير الشهر
+    const myAttHidden = currentUser && currentUser.role !== 'coach' && a.dataset.route === '/my-att';
+    a.style.display = (myAttHidden || (allowed && !allowed.includes(a.dataset.route))) ? 'none' : '';
   });
 }
 const pageTitle = document.getElementById('page-title');
@@ -1338,6 +1340,10 @@ async function route() {
     const allowed = NAV_RULES[currentUser.role];
     if (allowed && !allowed.includes(hash) && !hash.startsWith('/player/')) {
       location.hash = '#' + allowed[0];
+      return;
+    }
+    if (hash === '/my-att' && currentUser.role !== 'coach') { // حضوري للمدرب بس
+      location.hash = '#/';
       return;
     }
     const m = hash.match(/^\/player\/(\d+)$/);
