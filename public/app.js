@@ -1523,20 +1523,27 @@ function readItems(checkClass, amtClass) {
   return out;
 }
 
+const MORE_ICONS = {
+  'clip': `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>`,
+  'chat': `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>`,
+  'cash': `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="7" width="19" height="11" rx="2"/><circle cx="12" cy="12.5" r="2.6"/><path d="M6 10.5v.01M18 15v.01"/></svg>`,
+  'cap': `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13c0-4 4-7 9-7s9 3 9 7"/><path d="M3 13h18"/><path d="M14 13c0 2.5-1.5 4-3.5 4S7 15.5 7 13"/></svg>`,
+  'gear': `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"/></svg>`
+};
 async function renderMore() {
   pageTitle.textContent = 'المزيد';
   const full = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
   const links = [];
   if (full) {
-    links.push(['#/training', '📋', 'يوم التدريب']);
-    links.push(['#/messages', '💬', 'الرسائل']);
-    links.push(['#/expenses', '💰', 'المصاريف']);
+    links.push(['#/training', 'clip', 'يوم التدريب']);
+    links.push(['#/messages', 'chat', 'الرسائل']);
+    links.push(['#/expenses', 'cash', 'المصاريف']);
   }
-  links.push(['#/staff', '🧢', 'الجهاز']);
-  if (full) links.push(['#/settings', '⚙️', 'الإعدادات']);
+  links.push(['#/staff', 'cap', 'الجهاز']);
+  if (full) links.push(['#/settings', 'gear', 'الإعدادات']);
   app.innerHTML = links.map(([href, icon, label]) => `
     <div class="list-item" onclick="location.hash='${href}'">
-      <div class="grow"><div class="name">${icon} ${label}</div></div>
+      <div class="grow"><div class="name" style="display:flex;align-items:center;gap:8px">${MORE_ICONS[icon] || ''} ${label}</div></div>
     </div>`).join('');
 }
 const routes = {
