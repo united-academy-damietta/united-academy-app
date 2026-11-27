@@ -14,6 +14,20 @@ function applyRoleNav() {
   });
 }
 const pageTitle = document.getElementById('page-title');
+// بادج الاشتراكات: عدد التجديدات المستنية (7 أيام + سماح) للإدارة
+async function updateSubBadge() {
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) return;
+  try {
+    const d = await api('/dashboard');
+    const n = (d.renewals_due || []).length;
+    const link = document.querySelector('#bottomnav a[data-route="/subscribe"]');
+    if (!link) return;
+    let b = link.querySelector('.nav-badge');
+    if (!b) { b = document.createElement('span'); b.className = 'nav-badge'; link.appendChild(b); }
+    b.textContent = n;
+    b.style.display = n ? '' : 'none';
+  } catch (e) {}
+}
 const fmt = (n) => (n === null || n === undefined || n === '' ? '—' : Number(n).toLocaleString('en-US'));
 
 async function api(path, opts) {
@@ -224,6 +238,16 @@ async function renderDashboard() {
     });
     return;
   }
+  document.querySelectorAll('[data-renew-wa]').forEach((btn) => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      const r = await api('/messages/renewal/' + btn.dataset.renewWa, {});
+      toast(r.created ? 'مسودة التجديد جاهزة - ابعتها من واتساب بنفسك 🔁' : 'المسودة متجهزة قبل كده - هتلاقيها في الرسائل');
+      if (r.wa_link) window.open(r.wa_link, '_blank', 'noopener');
+      btn.disabled = false;
+    };
+  });
   window.toggleDashList = (id) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -272,6 +296,7 @@ async function renderDashboard() {
           <div class="sub">ينتهي ${p.end_date}</div>
         </div>
         ${stateBadge({ sub_state: p.sub_state, days_left: p.days_left })}
+        ${currentUser.role !== 'viewer' ? `<button class="btn small" data-renew-wa="${p.id}">🔁 جهز رسالة التجديد</button>` : ''}
       </div>`).join('') : '<div class="empty">مفيش تجديدات قريبة 👌</div>'}
     <div id="renew-next-list" style="display:none">
     <h2 class="section">🔄 اللي هيجددوا الشهر الجاي (${d.renew_next_list.length})</h2>
@@ -1622,6 +1647,7 @@ async function route() {
   }
   currentUser = me;
   applyRoleNav();
+  updateSubBadge();
   document.body.classList.remove('login-mode');
   document.getElementById('bottomnav').style.display = '';
   const hash = location.hash.replace(/^#/, '') || '/';

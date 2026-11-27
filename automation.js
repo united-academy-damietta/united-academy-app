@@ -120,4 +120,23 @@ function waLink(player, body) {
   return `https://wa.me/${phone}?text=${encodeURIComponent(body)}`;
 }
 
-module.exports = { confirmationDraft, absenceDrafts, renewalDrafts, birthdayDraft, runDaily, waLink, fill };
+// مسودة تجديد للاعب واحد عند الطلب (زر "جهز رسالة التجديد") - الإرسال يدوي من واتساب
+function renewalDraft(playerId, today) {
+  today = today || todayCairo();
+  const grace = getSettingInt('grace_days', 7);
+  const p = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId);
+  if (!p) return { created: false, body: null };
+  const sub = currentSub(p.id);
+  if (!sub) return { created: false, body: null };
+  const daysLeft = diffDays(today, sub.end_date);
+  let type = null, tpl = null, key = null;
+  if (daysLeft > 0 && daysLeft <= 7) { type = 'reminder_7d'; tpl = 'tpl_reminder_7d'; key = `r7:${p.id}:${sub.id}`; }
+  else if (daysLeft === 0) { type = 'due'; tpl = 'tpl_due'; key = `due:${p.id}:${sub.id}`; }
+  else if (daysLeft < 0 && daysLeft >= -grace) { type = 'overdue'; tpl = 'tpl_overdue'; key = `ovd:${p.id}:${sub.id}`; }
+  else { type = 'overdue'; tpl = 'tpl_overdue'; key = `ovd:${p.id}:${sub.id}:manual`; } // بعد السماح: رسالة متأخر يدوية منفصلة
+  const body = fill(getSetting(tpl), baseVars(p, { end_date: sub.end_date, days: Math.abs(daysLeft) }));
+  const created = createDraft(p, type, body, key);
+  return { created, body };
+}
+
+module.exports = { confirmationDraft, absenceDrafts, renewalDrafts, renewalDraft, birthdayDraft, runDaily, waLink, fill };

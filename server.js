@@ -780,6 +780,15 @@ app.post('/api/messages/birthday/:playerId', asyncWrap((req, res) => {
   res.json({ ok: true, created, wa_link: msg ? automation.waLink(p, msg.body) : null });
 }));
 
+// تجديد اشتراك: مسودة بس - الإرسال يدوي من شاشة الرسائل/واتساب
+app.post('/api/messages/renewal/:playerId', asyncWrap((req, res) => {
+  if (!requireFull(req, res)) return; // الإدارة بس - المدرب ميعرفش حالة الاشتراكات
+  const p = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.playerId);
+  if (!p) return res.status(404).json({ error: 'اللاعب غير موجود' });
+  const r = automation.renewalDraft(p.id);
+  res.json({ ok: true, created: r.created, wa_link: r.body ? automation.waLink(p, r.body) : null });
+}));
+
 app.post('/api/messages/:id/sent', asyncWrap((req, res) => {
   const info = db.prepare(
     `UPDATE messages SET status='sent', sent_at=datetime('now') WHERE id=?`

@@ -80,11 +80,17 @@ body.login-mode #topbar .subtitle { color: #f3b6bc; }
   padding: 0 max(0px, calc(50% - 360px));
 }
 #bottomnav a {
+  position: relative;
   flex: 1; text-align: center; padding: 8px 0 10px;
   text-decoration: none; color: var(--muted); font-size: 20px;
 }
 #bottomnav a span { display: block; font-size: 11px; margin-top: 2px; }
 #bottomnav a.active { color: var(--brand); }
+.nav-badge {
+  position: absolute; top: 3px; inset-inline-start: calc(50% + 4px);
+  background: var(--brand); color: #fff; border-radius: 999px;
+  font-size: 10px; font-weight: 700; min-width: 17px; padding: 1px 4px; line-height: 1.4;
+}
 
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .card {
