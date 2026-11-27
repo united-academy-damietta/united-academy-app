@@ -3,7 +3,7 @@ const app = document.getElementById('app');
 let currentUser = null;
 const NAV_RULES = {
   coach: ['/', '/players', '/attendance', '/my-att'],
-  staff: ['/staff']
+  staff: ['/more', '/staff']
 };
 function applyRoleNav() {
   const allowed = currentUser && NAV_RULES[currentUser.role];
@@ -379,10 +379,26 @@ async function renderPlayers() {
       <input id="search" placeholder="ابحث بالاسم أو رقم ولي الأمر..." />
       <button class="btn" id="add-btn" style="white-space:nowrap">＋ لاعب</button>
     </div>
+    ${currentUser && currentUser.role !== 'coach' ? `
+    <div id="p-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="btn small" data-chip="">الكل</button>
+      <button class="btn small gray" data-chip="active">نشط</button>
+      <button class="btn small gray" data-chip="grace">فترة سماح</button>
+      <button class="btn small gray" data-chip="expired">منتهي</button>
+    </div>` : ''}
     <div id="players-list"></div>`;
   const list = document.getElementById('players-list');
+  let chipState = '';
+  document.querySelectorAll('#p-chips [data-chip]').forEach((b) => {
+    b.onclick = () => {
+      chipState = b.dataset.chip;
+      document.querySelectorAll('#p-chips [data-chip]').forEach((x) => x.classList.toggle('gray', x !== b));
+      load(document.getElementById('search').value.trim());
+    };
+  });
   async function load(q) {
-    const rows = await api('/players' + (q ? `?search=${encodeURIComponent(q)}` : ''));
+    let rows = await api('/players' + (q ? `?search=${encodeURIComponent(q)}` : ''));
+    if (chipState) rows = rows.filter((p) => p.sub_state === chipState);
     list.innerHTML = rows.length ? rows.map((p) => `
       <div class="list-item" onclick="location.hash='#/player/${p.id}'">
         <div class="grow">
@@ -1507,6 +1523,22 @@ function readItems(checkClass, amtClass) {
   return out;
 }
 
+async function renderMore() {
+  pageTitle.textContent = 'المزيد';
+  const full = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
+  const links = [];
+  if (full) {
+    links.push(['#/training', '📋', 'يوم التدريب']);
+    links.push(['#/messages', '💬', 'الرسائل']);
+    links.push(['#/expenses', '💰', 'المصاريف']);
+  }
+  links.push(['#/staff', '🧢', 'الجهاز']);
+  if (full) links.push(['#/settings', '⚙️', 'الإعدادات']);
+  app.innerHTML = links.map(([href, icon, label]) => `
+    <div class="list-item" onclick="location.hash='${href}'">
+      <div class="grow"><div class="name">${icon} ${label}</div></div>
+    </div>`).join('');
+}
 const routes = {
   '/': renderDashboard,
   '/training': renderTrainingDay,
@@ -1517,7 +1549,8 @@ const routes = {
   '/staff': renderStaff,
   '/my-att': renderMyAttendance,
   '/subscribe': renderSubscribe,
-  '/settings': renderSettings
+  '/settings': renderSettings,
+  '/more': renderMore
 };
 async function route() {
   let me;
