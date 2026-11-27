@@ -36,8 +36,17 @@ backup.startScheduler(); // النسخ اليومي 2 بالليل القاهر�
 // ---------- auth ----------
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body || {};
+  const lockedMs = auth.loginLockRemainingMs(username);
+  if (lockedMs > 0) {
+    const mins = Math.ceil(lockedMs / 60000);
+    return res.status(429).json({ error: `محاولات دخول غلط كتير - الحساب مقفول مؤقتًا، جرب بعد ${mins} دقيقة` });
+  }
   const r = auth.login(username, password);
-  if (!r) return res.status(401).json({ error: 'اسم المستخدم أو كلمة السر غلط' });
+  if (!r) {
+    auth.recordLoginFail(username);
+    return res.status(401).json({ error: 'اسم المستخدم أو كلمة السر غلط' });
+  }
+  auth.clearLoginFails(username);
   auth.setSessionCookie(res, r.token);
   res.json({ ok: true, user: r.user });
 });

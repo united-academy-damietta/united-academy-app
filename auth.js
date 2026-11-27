@@ -50,6 +50,36 @@ function ensureAdmin() {
   }
 }
 
+// Rate limit للدخول: 10 محاولات غلط كحد أقصى لكل اسم مستخدم، وبعدها قفل مؤقت ساعة.
+// عداد في الذاكرة (بيتراجع مع ريستارت السيرفر) - بيترصفّر عند أول دخول ناجح.
+const LOGIN_MAX_FAILS = 10;
+const LOGIN_LOCK_MINUTES = 60;
+const loginFails = new Map(); // username -> { fails, lockedUntil }
+
+function loginLockRemainingMs(username) {
+  const rec = loginFails.get(String(username || '').trim().toLowerCase());
+  if (!rec || !rec.lockedUntil) return 0;
+  const left = rec.lockedUntil - Date.now();
+  if (left <= 0) { loginFails.delete(String(username || '').trim().toLowerCase()); return 0; }
+  return left;
+}
+
+function recordLoginFail(username) {
+  const key = String(username || '').trim().toLowerCase();
+  if (!key) return;
+  const rec = loginFails.get(key) || { fails: 0, lockedUntil: 0 };
+  rec.fails += 1;
+  if (rec.fails >= LOGIN_MAX_FAILS) {
+    rec.lockedUntil = Date.now() + LOGIN_LOCK_MINUTES * 60000;
+    rec.fails = 0;
+  }
+  loginFails.set(key, rec);
+}
+
+function clearLoginFails(username) {
+  loginFails.delete(String(username || '').trim().toLowerCase());
+}
+
 function login(username, password) {
   const u = db.prepare('SELECT * FROM users WHERE username = ?').get(String(username || '').trim());
   if (!u || !verifyPassword(password || '', u.pass_hash)) return null;
@@ -117,5 +147,8 @@ module.exports = {
   clearSessionCookie,
   requireAuth,
   hashPassword,
-  verifyPassword
+  verifyPassword,
+  loginLockRemainingMs,
+  recordLoginFail,
+  clearLoginFails
 };
