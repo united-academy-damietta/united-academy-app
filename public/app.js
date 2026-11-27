@@ -227,6 +227,7 @@ async function renderDashboard() {
     <div class="grid">
       <div class="card stat"><div class="num">${d.players_total}</div><div class="lbl">لاعب مسجل</div></div>
       <div class="card stat"><div class="num">${d.subs_active}</div><div class="lbl">اشتراك ساري</div></div>
+      <div class="card stat"><div class="num">${d.renew_next_month}</div><div class="lbl">لاعب هيجددوا الشهر الجاي 🔄</div></div>
       <div class="card stat"><div class="num">${d.collected_month}</div><div class="lbl">جنيه محصلة الشهر ده (${d.payments_month} دفعة)</div></div>
       <div class="card stat"><div class="num">${d.dropout_year}</div><div class="lbl">لاعب منقطع خلال 3 شهور (الشهر ده: ${d.dropout_month})</div></div>
     </div>

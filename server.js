@@ -189,6 +189,15 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
       })
       .sort((a, b) => a.birth_date.slice(5).localeCompare(b.birth_date.slice(5)));
   }
+  // تجديدات الشهر القادم (إدارة): تاريخ نهاية الاشتراك الحالي جوه الشهر الكلنداري الجاي
+  let renewNextMonth = 0;
+  if (!isCoach) {
+    const nextStart = addMonths(today.slice(0, 8) + '01', 1);
+    const monthAfter = addMonths(today.slice(0, 8) + '01', 2);
+    renewNextMonth = decorated.filter((p) =>
+      p.subscription && p.subscription.end_date >= nextStart && p.subscription.end_date < monthAfter
+    ).length;
+  }
   const announcements = db.prepare('SELECT * FROM announcements ORDER BY id DESC LIMIT 10').all();
   res.json({
     today,
@@ -202,6 +211,7 @@ app.get('/api/dashboard', asyncWrap((req, res) => {
       id: p.id, name: p.name, days_left: p.days_left, sub_state: p.sub_state,
       end_date: p.subscription.end_date
     })),
+    renew_next_month: isCoach ? null : renewNextMonth,
     collected_month: isCoach ? null : collected.total,
     payments_month: isCoach ? null : collected.n,
     present_today: att.present,
