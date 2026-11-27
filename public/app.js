@@ -238,16 +238,6 @@ async function renderDashboard() {
     });
     return;
   }
-  document.querySelectorAll('[data-renew-wa]').forEach((btn) => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      btn.disabled = true;
-      const r = await api('/messages/renewal/' + btn.dataset.renewWa, {});
-      toast(r.created ? 'مسودة التجديد جاهزة - ابعتها من واتساب بنفسك 🔁' : 'المسودة متجهزة قبل كده - هتلاقيها في الرسائل');
-      if (r.wa_link) window.open(r.wa_link, '_blank', 'noopener');
-      btn.disabled = false;
-    };
-  });
   window.toggleDashList = (id) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -352,6 +342,16 @@ async function renderDashboard() {
       <a class="btn secondary" href="#/messages">الرسائل الجاهزة (${d.draft_messages})</a>
       <button class="btn" id="gen-btn">تحديث التذكيرات</button>
     </div>`;
+  document.querySelectorAll('[data-renew-wa]').forEach((btn) => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      const r = await api('/messages/renewal/' + btn.dataset.renewWa, {});
+      toast(r.created ? 'مسودة التجديد جاهزة - ابعتها من واتساب بنفسك 🔁' : 'المسودة متجهزة قبل كده - هتلاقيها في الرسائل');
+      if (r.wa_link) window.open(r.wa_link, '_blank', 'noopener');
+      btn.disabled = false;
+    };
+  });
   document.getElementById('gen-btn').onclick = async () => {
     const r = await api('/messages/generate', {});
     toast(`اتعمل ${r.renewals} تذكير جديد`);
