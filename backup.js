@@ -9,7 +9,7 @@ const { db, getSetting, setSetting } = require('./db');
 
 const dataDir = path.join(__dirname, 'data');
 const markerFile = path.join(dataDir, '.db_initialized');
-const BACKUP_HOUR_CAIRO = 2; // النسخة اليومية الساعة 2 بالليل بتوقيت القاهرة
+// نسخة كل ساعة (بطلب أحمد 28 نوفمبر) - كل النسخ بتتخزن، مفيش مسح تلقائي.
 
 function driveConfigured() {
   return !!(
@@ -100,16 +100,15 @@ function cairoNow() {
   return new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
 }
 
-// جدولة بدون مكتبات إضافية: فحص كل 30 دقيقة، وينفذ مرة واحدة يوميًا في ساعة النسخ.
+// جدولة بدون مكتبات إضافية: فحص كل 15 دقيقة، وينفذ نسخة كل ساعة.
 function startScheduler() {
   setInterval(() => {
     const c = cairoNow();
-    if (c.getHours() !== BACKUP_HOUR_CAIRO) return;
-    const day = `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}`;
-    if ((getSetting('backup_last_run_day') || '') === day) return;
-    setSetting('backup_last_run_day', day);
-    runBackup('daily').catch(() => {});
-  }, 30 * 60 * 1000);
+    const hourStamp = `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}-${String(c.getHours()).padStart(2, '0')}`;
+    if ((getSetting('backup_last_run_hour') || '') === hourStamp) return;
+    setSetting('backup_last_run_hour', hourStamp);
+    runBackup('hourly').catch(() => {});
+  }, 15 * 60 * 1000);
 }
 
 // نقطة استعادة بعد النشر: تشتغل بس لما قاعدة البيانات تتبني من الصفر (نشر جديد مسح التخزين)
