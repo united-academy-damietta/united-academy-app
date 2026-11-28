@@ -1,7 +1,6 @@
-// النسخ الاحتياطي اليومي لقاعدة البيانات.
-// المرحلة الحالية (بموافقة أحمد): تجهيز كامل في الكود - لقطة متسقة + ضغط + جدولة يومية
-// + زرار يدوي + سطر حالة. رفع Google Drive مقفول لحد ما أحمد يوافق صراحة على الربط:
-// مفيش أي بيانات بتسيب السيرفر طالما متغيرات البيئة GDRIVE_* مش متظبطة.
+// النسخ الاحتياطي اليومي لقاعدة البيانات على Google Drive (اتفعل بموافقة أحمد 28 نوفمبر).
+// لقطة متسقة + ضغط + جدولة يومية + زرار يدوي + رفع لمجلد مخصوص على درايف الأكاديمية.
+// الاحتفاظ: كل النسخ بتتخزن، مفيش مسح تلقائي لأي نسخة (قاعدة أحمد: ممنوع مسح أي حاجة).
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -38,14 +37,45 @@ async function snapshotToTmp() {
   return gzPath;
 }
 
-// الرفع على Google Drive: مش متفعّل لحد موافقة أحمد الصريحة على الربط.
-// بعد الموافقة: googleapis OAuth2 بالمفاتيح من متغيرات البيئة، رفع لمجلد مخصوص،
-// والاحتفاظ بآخر 30 نسخة (مسح الأقدم - معروض على أحمد ضمن الخطة).
-async function uploadToDrive() {
+// الرفع على Google Drive: OAuth2 (refresh token) من متغيرات البيئة + رفع multipart.
+// كل النسخ بتتفضل محفوظة - مفيش مسح تلقائي نهائيًا.
+async function getDriveAccessToken() {
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.GDRIVE_CLIENT_ID,
+      client_secret: process.env.GDRIVE_CLIENT_SECRET,
+      refresh_token: process.env.GDRIVE_REFRESH_TOKEN,
+      grant_type: 'refresh_token'
+    })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) throw new Error('Drive auth failed: ' + (j.error_description || j.error || r.status));
+  return j.access_token;
+}
+
+async function uploadToDrive(gzPath) {
   if (!driveConfigured()) {
-    return { skipped: true, reason: 'Google Drive لسه غير مربوط - مستني موافقة أحمد على الربط' };
+    return { skipped: true, reason: 'Google Drive لسه غير مربوط - متغيرات البيئة GDRIVE_* مش متظبطة' };
   }
-  return { skipped: true, reason: 'رفع Drive هيتفعّل بعد الربط' };
+  const token = await getDriveAccessToken();
+  const name = `academy-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.db.gz`;
+  const metadata = { name, parents: [process.env.GDRIVE_FOLDER_ID] };
+  const boundary = 'backup_boundary_' + Date.now();
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/gzip\r\n\r\n`),
+    fs.readFileSync(gzPath),
+    Buffer.from(`\r\n--${boundary}--`)
+  ]);
+  const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/related; boundary=${boundary}` },
+    body
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error('Drive upload failed: ' + ((j.error && j.error.message) || r.status));
+  return { skipped: false, id: j.id, name: j.name };
 }
 
 async function runBackup(trigger) {
@@ -55,7 +85,7 @@ async function runBackup(trigger) {
     const size = fs.statSync(gz).size;
     const up = await uploadToDrive(gz);
     fs.rmSync(gz, { force: true });
-    const result = up.skipped ? `skipped: ${up.reason}` : 'uploaded';
+    const result = up.skipped ? `skipped: ${up.reason}` : `uploaded: ${up.name} (id ${up.id})`;
     setSetting('backup_last_at', at);
     setSetting('backup_last_result', `${result} (${trigger}, ${size} bytes)`);
     return { ok: !up.skipped, skipped: !!up.skipped, reason: up.reason || null, size, at };
