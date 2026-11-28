@@ -1094,7 +1094,7 @@ async function renderSettings() {
     </div>
     <div class="card" style="margin-top:10px">
       <h2 class="section" style="margin-top:0">النسخ الاحتياطي</h2>
-      <p class="note">نسخة تلقائية كل يوم الساعة 2 بالليل. الرفع على Google Drive هيشتغل بعد موافقة الإدارة على الربط - دلوقتي النسخة بتتجهز محليًا بس ومفيش أي بيانات بتسيب السيرفر.</p>
+      <p class="note">نسخة تلقائية كل ساعة، بتترفع على حساب Google Drive بتاع الأكاديمية وكل النسخ بتفضل محفوظة من غير ما أي نسخة تتمسح.</p>
       <div id="backup-status"></div>
       <button class="btn block" id="backup-run" style="margin-top:8px">نسخة احتياطية دلوقتي</button>
     </div>
