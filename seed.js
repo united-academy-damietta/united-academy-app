@@ -234,6 +234,11 @@ function seedIfEmpty() {
     db.prepare('INSERT INTO users (username, pass_hash, role) VALUES (?,?,?)').run('viewer', 'ac32a05e3245da08c58233e0ee2d3559:fc651f6cc22cf5efe4d56aa24f5b00a695b1a0d058e686f2c8b4f95b53a54df0fea18dc94827d200de4fab1b1473cac8f6f6e603f04937ade61077190112e003', 'viewer');
   }
 
+  // حساب عرض تجريبي (demo): نفس صلاحيات المشاهدة - للعرض على زوار - الباسورد في الخزنة مش في الكود
+  if (!db.prepare('SELECT id FROM users WHERE username = ?').get('demo')) {
+    db.prepare('INSERT INTO users (username, pass_hash, role) VALUES (?,?,?)').run('demo', 'd693938ff1e926882f3923b1541416b3:80d194944fbc123325a55803d75d52037bfc22e083430b3fa24c0f47b08f4b61036d36a37dd27beb5509c7dd4b9d5f27cf257da09037cc7f68e9e65fd064e73a', 'viewer');
+  }
+
   // Demo staff attendance over the last 12 training days, with late minutes and some absences.
   const allStaff = db.prepare('SELECT id, role FROM staff ORDER BY id').all();
   const insStaffAtt = db.prepare(
