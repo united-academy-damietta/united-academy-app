@@ -236,7 +236,7 @@ function seedIfEmpty() {
 
   // حساب عرض تجريبي (demo): نفس صلاحيات المشاهدة - للعرض على زوار - الباسورد في الخزنة مش في الكود
   if (!db.prepare('SELECT id FROM users WHERE username = ?').get('demo')) {
-    db.prepare('INSERT INTO users (username, pass_hash, role) VALUES (?,?,?)').run('demo', 'd693938ff1e926882f3923b1541416b3:80d194944fbc123325a55803d75d52037bfc22e083430b3fa24c0f47b08f4b61036d36a37dd27beb5509c7dd4b9d5f27cf257da09037cc7f68e9e65fd064e73a', 'viewer');
+    db.prepare('INSERT INTO users (username, pass_hash, role) VALUES (?,?,?)').run('demo', '46b725bac94cfb313a9c0ef8d1805ca0:ac0789e16993ba7060f04a1f161c0464646372342933c491f9ae6c9b83096334ade6d93b539e0eb7acd29ca0af1d089c3dac42db55cc5e53073e3920b58c447e', 'viewer');
   }
 
   // Demo staff attendance over the last 12 training days, with late minutes and some absences.
